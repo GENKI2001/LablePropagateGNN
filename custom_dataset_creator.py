@@ -307,27 +307,11 @@ def analyze_dataset(dataset):
     return data
 
 if __name__ == "__main__":
-    # デフォルトの接続パターンでデータセットを作成
-    print("=== デフォルト接続パターンでのデータセット作成 ===")
+    # データセットの作成例（シェルスクリプトから呼び出される場合は、シェルスクリプト側でパラメータを指定）
+    print("=== カスタムグラフデータセット作成 ===")
+    print("シェルスクリプト create_custom_graoh.sh を使用してパラメータを指定してください")
+    print("例: ./create_custom_graoh.sh -n 2000 -d 4.0 -p chain")
+    
+    # デフォルトの例（シェルスクリプトを使用しない場合）
     dataset = create_custom_dataset(num_nodes=1200, name="CustomGraph", target_avg_degree=3.0)
-    data = analyze_dataset(dataset)
-    
-    # カスタム接続パターンでデータセットを作成
-    print("\n=== カスタム接続パターンでのデータセット作成 ===")
-    
-    
-    # 例：線形チェーン風の接続パターン
-    chain_patterns = {
-        0: [1],      # クラス1 → クラス2
-        1: [0, 2],   # クラス2 → クラス1, クラス3
-        2: [1, 3],   # クラス3 → クラス2, クラス4
-        3: [2, 4],   # クラス4 → クラス3, クラス5
-        4: [3]       # クラス5 → クラス4
-    }
-    chain_dataset = create_custom_dataset(
-        num_nodes=1000, 
-        name="CustomGraph", 
-        target_avg_degree=2.0,
-        connection_patterns=chain_patterns
-    )
-    chain_data = analyze_dataset(chain_dataset) 
+    data = analyze_dataset(dataset) 
