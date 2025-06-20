@@ -11,11 +11,12 @@ from models import ModelFactory
 
 # データセット選択
 # サポートされているデータセット:
+# CustomGraph: 'CustomGraph_Chain'
 # Planetoid: 'Cora', 'Citeseer', 'Pubmed'
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Chameleon'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'CustomGraph'  # ここを変更してデータセットを切り替え
 
 # モデル選択
 # サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2'
@@ -31,8 +32,8 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 2       # 最大hop数（1, 2, 3, ...）
-EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか
+MAX_HOPS = 1       # 最大hop数（1, 2, 3, ...）
+EXCLUDE_TEST_LABELS = False  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
 
 # モデルハイパーパラメータ
 HIDDEN_CHANNELS = 16  # 隠れ層の次元（GCN系）/ 8（GAT系）

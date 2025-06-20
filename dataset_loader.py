@@ -1,20 +1,38 @@
 import torch
 from torch_geometric.datasets import Planetoid, WebKB, WikipediaNetwork, Actor
+from custom_dataset_creator import create_custom_dataset
 
-def load_dataset(dataset_name, device):
+def load_dataset(dataset_name, device, **kwargs):
     """
     データセットを読み込む関数
     
     Args:
         dataset_name (str): データセット名
         device (torch.device): デバイス
+        **kwargs: カスタムデータセット用の追加パラメータ
     
     Returns:
         data: PyTorch Geometric データオブジェクト
         dataset: データセットオブジェクト
     """
     
-    # データセット読み込み
+    # カスタムデータセットの処理
+    if dataset_name == 'CustomGraph':
+        num_nodes = kwargs.get('num_nodes', 1200)
+        target_avg_degree = kwargs.get('target_avg_degree', 3.0)
+        feature_dim = kwargs.get('feature_dim', 128)
+        connection_patterns = kwargs.get('connection_patterns', None)
+        dataset = create_custom_dataset(
+            num_nodes=num_nodes, 
+            name="CustomGraph",
+            target_avg_degree=target_avg_degree,
+            feature_dim=feature_dim,
+            connection_patterns=connection_patterns
+        )
+        data = dataset[0].to(device)
+        return data, dataset
+    
+    # 既存のデータセット読み込み
     if dataset_name in ['Cora', 'Citeseer', 'Pubmed']:
         dataset = Planetoid(root=f'/tmp/{dataset_name}', name=dataset_name)
     elif dataset_name in ['Cornell', 'Texas', 'Wisconsin', 'Washington']:
@@ -132,5 +150,6 @@ def get_supported_datasets():
         'Planetoid': ['Cora', 'Citeseer', 'Pubmed'],
         'WebKB': ['Cornell', 'Texas', 'Wisconsin', 'Washington'],
         'WikipediaNetwork': ['Chameleon', 'Squirrel'],
-        'Actor': ['Actor']
+        'Actor': ['Actor'],
+        'Custom': ['CustomGraph']
     } 
