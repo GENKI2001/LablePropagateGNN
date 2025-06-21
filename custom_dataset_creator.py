@@ -145,60 +145,44 @@ class CustomGraphDataset(Dataset):
         # 1. クラス内接続は削除（同ラベル同士の接続を禁止）
         print(f"クラス内接続: 無効（同ラベル同士の接続を禁止）")
         
-        # 2. クラス間接続を生成
-        # 各クラスからターゲットクラスに最大2本ずつ接続
-        max_edges_per_connection = 2  # 各接続パターンにつき最大2本
-        
+        # 2. 指定された接続パターンに従ってエッジを生成
+        pattern_edges = 0
         for source_class, target_classes in self.connection_patterns.items():
             source_nodes = class_nodes[source_class]
             for target_class in target_classes:
                 target_nodes = class_nodes[target_class]
                 
-                # 各接続パターンにつき最大2本のエッジを生成
-                edges_to_add = min(max_edges_per_connection, len(source_nodes), len(target_nodes))
-                for _ in range(edges_to_add):
+                # 各接続パターンにつき、より多くのエッジを生成
+                edges_per_connection = min(10, len(source_nodes), len(target_nodes))
+                for _ in range(edges_per_connection):
                     source_node = random.choice(source_nodes)
                     target_node = random.choice(target_nodes)
                     edge = tuple(sorted([source_node, target_node]))
                     edges_set.add(edge)
+                    pattern_edges += 1
         
-        print(f"必須クラス間接続後エッジ数: {len(edges_set)}")
+        print(f"指定パターン接続後エッジ数: {len(edges_set)}")
         
-        # 追加：確率的なクラス間接続
-        inter_prob = 0.005  # 低めの確率
-        for source_class, target_classes in self.connection_patterns.items():
-            source_nodes = class_nodes[source_class]
-            for target_class in target_classes:
-                target_nodes = class_nodes[target_class]
-                for source_node in source_nodes:
-                    for target_node in target_nodes:
-                        if random.random() < inter_prob:
-                            edge = tuple(sorted([source_node, target_node]))
-                            edges_set.add(edge)
-        
-        print(f"確率的クラス間接続後エッジ数: {len(edges_set)}")
-        
-        # 3. 目標エッジ数に達していない場合、ランダムな接続を追加（異なるラベル間のみ）
+        # 3. 目標エッジ数に達していない場合、指定されたパターン内でランダムな接続を追加
         current_edges = len(edges_set)
         if current_edges < target_total_edges:
             additional_edges_needed = target_total_edges - current_edges
             print(f"追加エッジ数: {additional_edges_needed}")
             
-            # ランダムな接続を追加（異なるラベル間のみ）
+            # 指定されたパターン内でランダムな接続を追加
             attempts = 0
-            max_attempts = additional_edges_needed * 20  # より多くの試行回数
+            max_attempts = additional_edges_needed * 10
             
             while len(edges_set) < target_total_edges and attempts < max_attempts:
-                # ランダムに2つの異なるクラスを選択
-                class1 = random.randint(0, self.n_classes - 1)
-                class2 = random.randint(0, self.n_classes - 1)
+                # 指定されたパターンからランダムに選択
+                source_class = random.choice(list(self.connection_patterns.keys()))
+                target_class = random.choice(self.connection_patterns[source_class])
                 
-                if class1 != class2:  # 異なるクラスのみ
-                    if class_nodes[class1] and class_nodes[class2]:  # 両クラスにノードが存在
-                        node1 = random.choice(class_nodes[class1])
-                        node2 = random.choice(class_nodes[class2])
-                        edge = tuple(sorted([node1, node2]))
-                        edges_set.add(edge)
+                if class_nodes[source_class] and class_nodes[target_class]:
+                    source_node = random.choice(class_nodes[source_class])
+                    target_node = random.choice(class_nodes[target_class])
+                    edge = tuple(sorted([source_node, target_node]))
+                    edges_set.add(edge)
                 
                 attempts += 1
         
