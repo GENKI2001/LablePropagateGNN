@@ -142,7 +142,7 @@ if [ -n "$CUSTOM_PATTERN_FILE" ]; then
         exit 1
     fi
     python3 -c "
-import custom_dataset_creator as cdc
+import utils.custom_dataset_creator as cdc
 import json
 
 with open('$CUSTOM_PATTERN_FILE', 'r') as f:
@@ -164,7 +164,7 @@ elif [ -n "$CUSTOM_PATTERN_STRING" ]; then
     echo "📊 カスタム接続パターン文字列を解析: $CUSTOM_PATTERN_STRING"
     PATTERN_DICT=$(parse_pattern_string "$CUSTOM_PATTERN_STRING")
     python3 -c "
-import custom_dataset_creator as cdc
+import utils.custom_dataset_creator as cdc
 
 connection_patterns = $PATTERN_DICT
 
@@ -182,7 +182,7 @@ else
         "default")
             echo "📊 デフォルト接続パターンを使用"
             python3 -c "
-import custom_dataset_creator as cdc
+import utils.custom_dataset_creator as cdc
 dataset = cdc.create_custom_dataset(
     num_nodes=$NODES, 
     name='$NAME', 
@@ -194,7 +194,7 @@ cdc.analyze_dataset(dataset)
         "chain")
             echo "📊 チェーン接続パターンを使用"
             python3 -c "
-import custom_dataset_creator as cdc
+import utils.custom_dataset_creator as cdc
 chain_patterns = {
     0: [1],      # クラス1 → クラス2
     1: [0, 2],   # クラス2 → クラス1, クラス3
@@ -214,7 +214,7 @@ cdc.analyze_dataset(dataset)
         "full")
             echo "📊 完全グラフ接続パターンを使用"
             python3 -c "
-import custom_dataset_creator as cdc
+import utils.custom_dataset_creator as cdc
 full_patterns = {
     0: [1, 2, 3, 4],  # クラス1は他のすべてのクラスと接続
     1: [0, 2, 3, 4],  # クラス2は他のすべてのクラスと接続
@@ -234,7 +234,7 @@ cdc.analyze_dataset(dataset)
         "star")
             echo "📊 スター型接続パターンを使用"
             python3 -c "
-import custom_dataset_creator as cdc
+import utils.custom_dataset_creator as cdc
 star_patterns = {
     0: [1, 2, 3, 4],  # クラス1が中心（ハブ）
     1: [0],            # クラス2 → クラス1

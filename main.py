@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-from dataset_loader import load_dataset, get_supported_datasets
-from feature_creator import create_neighbor_features, display_node_features, get_feature_info
+from utils.dataset_loader import load_dataset, get_supported_datasets
+from utils.feature_creator import create_neighbor_lable_features, display_node_features, get_feature_info
 from models import ModelFactory
 
 # ============================================================================
@@ -16,15 +16,15 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'CustomGraph'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
 
 # モデル選択
-# サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2'
-MODEL_NAME = 'GAT'  # ここを変更してモデルを切り替え
+# サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip'
+MODEL_NAME = 'MLP'  # ここを変更してモデルを切り替え
 
 # 実験設定
 NUM_RUNS = 10  # 実験回数
-NUM_EPOCHS = 200  # エポック数
+NUM_EPOCHS = 400  # エポック数
 
 # データ分割設定
 TRAIN_RATIO = 0.6  # 訓練データの割合
@@ -32,13 +32,13 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 1       # 最大hop数（1, 2, 3, ...）
+MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
 EXCLUDE_TEST_LABELS = False  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
 
 # モデルハイパーパラメータ
 HIDDEN_CHANNELS = 16  # 隠れ層の次元（GCN系）/ 8（GAT系）
 NUM_LAYERS = 2        # レイヤー数
-DROPOUT = 0.0         # ドロップアウト率
+DROPOUT = 0.5         # ドロップアウト率
 NUM_HEADS = 8         # アテンションヘッド数（GAT系のみ）
 CONCAT_HEADS = True   # アテンションヘッドの出力を結合するか（GAT系のみ）
 
@@ -114,7 +114,7 @@ for run in range(NUM_RUNS):
     
     print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
     
-    run_data, adj_matrix, one_hot_labels = create_neighbor_features(run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS)
+    run_data, adj_matrix, one_hot_labels = create_neighbor_lable_features(run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS)
 
     # 特徴量情報を取得
     feature_info = get_feature_info(run_data, one_hot_labels, max_hops=MAX_HOPS)

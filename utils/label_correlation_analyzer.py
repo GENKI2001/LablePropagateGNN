@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 from collections import defaultdict, Counter
-from dataset_loader import load_dataset, get_supported_datasets
+from .dataset_loader import load_dataset, get_supported_datasets
 import warnings
 import os
 warnings.filterwarnings('ignore')

@@ -40,9 +40,12 @@ python index.py
 
 ## Project Structure
 
-- `index.py` - Main entry point
-- `dataset_loader.py` - Dataset loading utilities
-- `feature_creator.py` - Feature creation utilities
+- `main.py` - Main entry point
+- `utils/` - Utility modules
+  - `feature_creator.py` - Feature creation utilities
+  - `dataset_loader.py` - Dataset loading utilities
+  - `custom_dataset_creator.py` - Custom dataset creation utilities
+  - `label_correlation_analyzer.py` - Label correlation analysis utilities
 - `models/` - Model implementations
   - `gcn.py` - Graph Convolutional Network
   - `gat.py` - Graph Attention Network

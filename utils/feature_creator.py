@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from sklearn.preprocessing import OneHotEncoder
 
-def create_neighbor_features(data, device, max_hops=2, exclude_test_labels=True):
+def create_neighbor_lable_features(data, device, max_hops=2, exclude_test_labels=True):
     """
     適切なデータリーク対策を実装した特徴量作成関数（高速版）
     

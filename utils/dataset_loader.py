@@ -1,6 +1,6 @@
 import torch
 from torch_geometric.datasets import Planetoid, WebKB, WikipediaNetwork, Actor
-from custom_dataset_creator import create_custom_dataset
+from .custom_dataset_creator import create_custom_dataset
 
 def load_dataset(dataset_name, device, **kwargs):
     """

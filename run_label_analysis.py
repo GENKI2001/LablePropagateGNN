@@ -9,7 +9,7 @@
 """
 
 import argparse
-from label_correlation_analyzer import LabelCorrelationAnalyzer
+from utils.label_correlation_analyzer import LabelCorrelationAnalyzer
 
 def main():
     parser = argparse.ArgumentParser(description='隣接ノード間ラベル相関分析')

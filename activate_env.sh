@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # GSLCodes プロジェクト用仮想環境activateスクリプト
+# 使用方法: source activate_env.sh
 
 # スクリプトのディレクトリを取得
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

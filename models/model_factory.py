@@ -1,6 +1,7 @@
 import torch
 from .gcn import GCN, GCNWithSkip
 from .gat import GAT, GATWithSkip, GATv2
+from .mlp import MLP, MLPWithSkip
 
 class ModelFactory:
     """
@@ -86,6 +87,22 @@ class ModelFactory:
                 concat=default_params['concat']
             )
         
+        elif model_name == 'MLP':
+            return MLP(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                dropout=default_params['dropout']
+            )
+        
+        elif model_name == 'MLPWithSkip':
+            return MLPWithSkip(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                dropout=default_params['dropout']
+            )
+        
         else:
             raise ValueError(f"Unsupported model: {model_name}")
     
@@ -125,6 +142,16 @@ class ModelFactory:
                 'description': 'Improved Graph Attention Network',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'num_heads', 'dropout', 'concat'],
                 'default_hidden_channels': 8
+            },
+            'MLP': {
+                'description': '1-layer Multi-Layer Perceptron (ignores graph structure)',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
+                'default_hidden_channels': 16
+            },
+            'MLPWithSkip': {
+                'description': '1-layer MLP with Skip Connections',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
+                'default_hidden_channels': 16
             }
         }
         
@@ -138,4 +165,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2'] 
+        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip'] 
