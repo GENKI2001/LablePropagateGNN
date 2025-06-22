@@ -20,10 +20,10 @@ DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
 
 # モデル選択
 # サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip'
-MODEL_NAME = 'MLP'  # ここを変更してモデルを切り替え
+MODEL_NAME = 'GAT'  # ここを変更してモデルを切り替え
 
 # 実験設定
-NUM_RUNS = 10  # 実験回数
+NUM_RUNS = 20  # 実験回数
 NUM_EPOCHS = 400  # エポック数
 
 # データ分割設定
@@ -35,10 +35,6 @@ TEST_RATIO = 0.2   # テストデータの割合
 MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
 EXCLUDE_TEST_LABELS = False  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
 PCA_COMPONENTS = 50  # PCAで圧縮する次元数
-USE_DEEPWALK = True  # DeepWalk特徴量を使用するか
-WALK_LENGTH = 10    # 各ランダムウォークの長さ
-NUM_WALKS = 10      # 各ノードから開始するウォーク数
-WINDOW_SIZE = 5     # スキップグラムのウィンドウサイズ
 
 # モデルハイパーパラメータ
 HIDDEN_CHANNELS = 16  # 隠れ層の次元（GCN系）/ 8（GAT系）
@@ -82,7 +78,6 @@ print(f"データ分割: 訓練={TRAIN_RATIO:.1%}, 検証={VAL_RATIO:.1%}, テ�
 print(f"最大hop数: {MAX_HOPS}")
 print(f"テストラベル除外: {EXCLUDE_TEST_LABELS}")
 print(f"PCA圧縮次元数: {PCA_COMPONENTS}")
-print(f"DeepWalk: 使用={USE_DEEPWALK}, ランダムウォーク長さ={WALK_LENGTH}, ウォーク数={NUM_WALKS}, ウィンドウサイズ={WINDOW_SIZE}")
 print(f"隠れ層次元: {default_hidden_channels}")
 print(f"レイヤー数: {NUM_LAYERS}")
 print(f"ドロップアウト: {DROPOUT}")
@@ -121,17 +116,10 @@ for run in range(NUM_RUNS):
     
     print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
     
-    if USE_DEEPWALK:
-        run_data, adj_matrix, one_hot_labels, pca_features, deepwalk_features = create_combined_features_with_pca(
-            run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS, 
-            pca_components=PCA_COMPONENTS, use_deepwalk=True, walk_length=WALK_LENGTH, 
-            num_walks=NUM_WALKS, window_size=WINDOW_SIZE
-        )
-    else:
-        run_data, adj_matrix, one_hot_labels, pca_features = create_combined_features_with_pca(
-            run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS, 
-            pca_components=PCA_COMPONENTS, use_deepwalk=False
-        )
+    run_data, adj_matrix, one_hot_labels, pca_features = create_combined_features_with_pca(
+        run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS, 
+        pca_components=PCA_COMPONENTS
+    )
 
     # 特徴量情報を取得
     feature_info = get_feature_info(run_data, one_hot_labels, max_hops=MAX_HOPS)
