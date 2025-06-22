@@ -6,13 +6,15 @@ from utils.feature_creator import (
     create_neighbor_lable_features, 
     create_combined_features_with_pca, 
     create_combined_features_with_pca_and_co_label,
-    display_node_features, 
+    display_node_features,
     get_feature_info,
     display_co_label_embeddings_info
 )
 from utils.edge_enhancer import (
     enhance_edges_by_similarity,
-    analyze_similarity_distribution
+    analyze_similarity_distribution,
+    enhance_edges_by_label_distribution,
+    analyze_label_distribution_similarity
 )
 from models import ModelFactory
 
@@ -27,15 +29,15 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # モデル選択
 # サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip'
-MODEL_NAME = 'GCN'  # ここを変更してモデルを切り替え
+MODEL_NAME = 'MLP'  # ここを変更してモデルを切り替え
 
 # 実験設定
 NUM_RUNS = 20  # 実験回数
-NUM_EPOCHS = 400  # エポック数
+NUM_EPOCHS = 200  # エポック数
 
 # データ分割設定
 TRAIN_RATIO = 0.6  # 訓練データの割合
@@ -43,30 +45,33 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 3       # 最大hop数（1, 2, 3, ...）
+MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
 EXCLUDE_TEST_LABELS = False  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
-PCA_COMPONENTS = 30  # PCAで圧縮する次元数
+PCA_COMPONENTS = 50  # PCAで圧縮する次元数
 
 # 共起ラベルエンベディング設定
-USE_CO_LABEL_EMBEDDING = True  # 共起ラベルエンベディングを使用するか
+USE_CO_LABEL_EMBEDDING = False  # 共起ラベルエンベディングを使用するか
 CO_LABEL_EMBEDDING_DIM = 32    # 共起ラベルエンベディングの次元数（クラス数に応じて動的に調整される）
 CO_LABEL_WINDOW_SIZE = 1       # 共起を計算するウィンドウサイズ
 CO_LABEL_MAX_HOPS = 1          # 共起ラベルエンベディングの最大hop数
 
-# エッジ追加設定
-USE_EDGE_ENHANCEMENT = True    # 特徴量類似度に基づくエッジ追加を使用するか
-EDGE_SIMILARITY_METHOD = 'euclidean'  # 類似度計算方法 ('cosine', 'euclidean', 'pearson', 'jaccard')
+# 類似度エッジ追加設定
+USE_EDGE_ENHANCEMENT = False    # 特徴量類似度に基づくエッジ追加を使用するか
+EDGE_SIMILARITY_METHOD = 'euclidean'  # 類似度計算方法 ('cosine', 'euclidean', 'pearson', 'jaccard', 'manhattan', 'chebyshev', 'spearman', 'mahalanobis', 'rbf_kernel', 'polynomial_kernel', 'laplacian_kernel')
 EDGE_SIMILARITY_THRESHOLD = 0.5    # エッジ追加の閾値 (0.0-1.0)
 EDGE_MAX_EDGES_PER_NODE = None     # ノードあたりの最大エッジ数 (Noneの場合は制限なし)
 EDGE_SYMMETRIC = True              # 対称的なエッジ追加を行うか
 EDGE_NORMALIZE_FEATURES = True     # 特徴量を正規化するか
 
-# ラベル類似度ベースのエッジ追加設定
-USE_LABEL_SIMILARITY_ENHANCEMENT = False  # ラベル類似度に基づくエッジ追加を使用するか
-LABEL_SIMILARITY_METHOD = 'cosine'       # ラベル類似度計算方法
-LABEL_SIMILARITY_THRESHOLD = 0.99        # ラベル類似度の閾値
-LABEL_USE_TRAIN_VAL_ONLY = True          # 訓練・検証データのみを使用するか（テストデータのラベルは使用しない）
-LABEL_MAX_HOPS = 2                       # 隣接ノードを考慮する最大hop数
+# ラベル分布ベースのエッジ追加設定
+USE_LABEL_DISTRIBUTION_ENHANCEMENT = True  # ラベル分布ベースのエッジ追加を使用するか
+LABEL_DISTRIBUTION_SIMILARITY_METHOD = 'euclidean'  # ラベル分布類似度計算方法 ('cosine', 'euclidean', 'pearson', 'jaccard', 'manhattan', 'chebyshev', 'spearman', 'mahalanobis', 'rbf_kernel', 'polynomial_kernel', 'laplacian_kernel')
+LABEL_DISTRIBUTION_THRESHOLD = 0.97        # ラベル分布類似度の閾値（0.95→0.98に上げる）
+LABEL_DISTRIBUTION_MAX_EDGES_PER_NODE = 5  # ノードあたりの最大エッジ数（None→5に制限）
+LABEL_DISTRIBUTION_SYMMETRIC = True       # 対称的なエッジ追加を行うか
+LABEL_DISTRIBUTION_NORMALIZE_FEATURES = True  # 特徴量を正規化するか
+LABEL_DISTRIBUTION_TOP_PERCENTILE = 0.01   # 類似度の上位1%のみを選択（エッジ数を大幅削減）
+ANALYZE_LABEL_DISTRIBUTION_SIMILARITY = True  # ラベル分布類似度分布を事前分析するか
 
 ANALYZE_SIMILARITY_DISTRIBUTION = False  # 類似度分布を分析するか
 
@@ -125,11 +130,14 @@ if USE_EDGE_ENHANCEMENT:
     print(f"  最大エッジ数/ノード: {EDGE_MAX_EDGES_PER_NODE}")
     print(f"  対称的エッジ: {EDGE_SYMMETRIC}")
     print(f"  特徴量正規化: {EDGE_NORMALIZE_FEATURES}")
-print(f"ラベル類似度エッジ追加: {USE_LABEL_SIMILARITY_ENHANCEMENT}")
-if USE_LABEL_SIMILARITY_ENHANCEMENT:
-    print(f"  ラベル類似度計算方法: {LABEL_SIMILARITY_METHOD}")
-    print(f"  ラベル類似度閾値: {LABEL_SIMILARITY_THRESHOLD}")
-    print(f"  訓練・検証データのみを使用: {LABEL_USE_TRAIN_VAL_ONLY}")
+print(f"ラベル分布エッジ追加: {USE_LABEL_DISTRIBUTION_ENHANCEMENT}")
+if USE_LABEL_DISTRIBUTION_ENHANCEMENT:
+    print(f"  類似度計算方法: {LABEL_DISTRIBUTION_SIMILARITY_METHOD}")
+    print(f"  類似度閾値: {LABEL_DISTRIBUTION_THRESHOLD}")
+    print(f"  ノードあたりの最大エッジ数: {LABEL_DISTRIBUTION_MAX_EDGES_PER_NODE}")
+    print(f"  対称的エッジ: {LABEL_DISTRIBUTION_SYMMETRIC}")
+    print(f"  特徴量正規化: {LABEL_DISTRIBUTION_NORMALIZE_FEATURES}")
+print(f"類似度の上位1%のみを選択: {LABEL_DISTRIBUTION_TOP_PERCENTILE}")
 print(f"隠れ層次元: {default_hidden_channels}")
 print(f"レイヤー数: {NUM_LAYERS}")
 print(f"ドロップアウト: {DROPOUT}")
@@ -193,7 +201,7 @@ for run in range(NUM_RUNS):
     
     # 特徴量作成（共起ラベルエンベディングの使用有無に応じて分岐）
     if USE_CO_LABEL_EMBEDDING:
-        run_data, adj_matrix, one_hot_labels, pca_features, co_label_features, label_cooccurrence_matrix = \
+        run_data, adj_matrix, one_hot_labels, pca_features, co_label_features, label_cooccurrence_matrix, data_without_pca = \
             create_combined_features_with_pca_and_co_label(
                 run_data, device, 
                 max_hops=MAX_HOPS, 
@@ -208,13 +216,48 @@ for run in range(NUM_RUNS):
         if SHOW_CO_LABEL_INFO:
             display_co_label_embeddings_info(co_label_features, label_cooccurrence_matrix, DATASET_NAME)
     else:
-        run_data, adj_matrix, one_hot_labels, pca_features = create_combined_features_with_pca(
+        run_data, adj_matrix, one_hot_labels, pca_features, data_without_pca = create_combined_features_with_pca(
             run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS, 
             pca_components=PCA_COMPONENTS
         )
 
     # 特徴量情報を取得
     feature_info = get_feature_info(run_data, one_hot_labels, max_hops=MAX_HOPS)
+    
+    # ラベル分布ベースのエッジ追加（特徴量作成後）
+    if USE_LABEL_DISTRIBUTION_ENHANCEMENT:
+        print(f"\n=== ラベル分布ベースのエッジ追加（特徴量作成後） ===")
+        
+        # ラベル分布類似度分布の事前分析（オプション）
+        if ANALYZE_LABEL_DISTRIBUTION_SIMILARITY:
+            similarity_stats = analyze_label_distribution_similarity(
+                run_data, feature_info, 
+                similarity_method=LABEL_DISTRIBUTION_SIMILARITY_METHOD,
+                normalize_features=LABEL_DISTRIBUTION_NORMALIZE_FEATURES,
+                data_without_pca=data_without_pca
+            )
+            
+            # 適切な閾値を自動決定（99パーセンタイルを使用）
+            auto_threshold = similarity_stats['percentiles']['99']
+            print(f"自動決定された閾値（99パーセンタイル）: {auto_threshold:.4f}")
+            
+            # 現在の閾値と比較して、より厳しい方を選択
+            final_threshold = max(LABEL_DISTRIBUTION_THRESHOLD, auto_threshold)
+            print(f"使用する閾値: {final_threshold:.4f}")
+        else:
+            final_threshold = LABEL_DISTRIBUTION_THRESHOLD
+        
+        run_data, label_distribution_edge_info = enhance_edges_by_label_distribution(
+            run_data,
+            feature_info,
+            similarity_method=LABEL_DISTRIBUTION_SIMILARITY_METHOD,
+            threshold=final_threshold,
+            max_edges_per_node=LABEL_DISTRIBUTION_MAX_EDGES_PER_NODE,
+            symmetric=LABEL_DISTRIBUTION_SYMMETRIC,
+            normalize_features=LABEL_DISTRIBUTION_NORMALIZE_FEATURES,
+            data_without_pca=data_without_pca,
+            top_percentile=LABEL_DISTRIBUTION_TOP_PERCENTILE
+        )
     
     # 特徴量の詳細表示（オプション）
     if SHOW_FEATURE_DETAILS:
@@ -303,6 +346,9 @@ for run in range(NUM_RUNS):
     if USE_EDGE_ENHANCEMENT:
         run_result['feature_edge_info'] = feature_edge_info
     
+    if USE_LABEL_DISTRIBUTION_ENHANCEMENT:
+        run_result['label_distribution_edge_info'] = label_distribution_edge_info
+    
     all_results.append(run_result)
     
     print(f"実験 {run + 1} 完了:")
@@ -351,5 +397,9 @@ print(f"エッジ追加: {USE_EDGE_ENHANCEMENT}")
 if USE_EDGE_ENHANCEMENT:
     print(f"  類似度計算方法: {EDGE_SIMILARITY_METHOD}")
     print(f"  類似度閾値: {EDGE_SIMILARITY_THRESHOLD}")
+print(f"ラベル分布エッジ追加: {USE_LABEL_DISTRIBUTION_ENHANCEMENT}")
+if USE_LABEL_DISTRIBUTION_ENHANCEMENT:
+    print(f"  類似度計算方法: {LABEL_DISTRIBUTION_SIMILARITY_METHOD}")
+    print(f"  類似度閾値: {LABEL_DISTRIBUTION_THRESHOLD}")
 print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
 print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}") 

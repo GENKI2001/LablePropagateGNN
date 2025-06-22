@@ -236,6 +236,7 @@ def create_combined_features_with_pca(data, device, max_hops=2, exclude_test_lab
         adj_matrix: 隣接行列
         one_hot_labels: ワンホットエンコーディングされたラベル
         pca_features: PCA圧縮された特徴量
+        data_without_pca: PCA特徴量のないデータオブジェクト（ラベル分布特徴量のみ）
     """
     
     # 元の特徴量を取得
@@ -320,7 +321,15 @@ def create_combined_features_with_pca(data, device, max_hops=2, exclude_test_lab
     # 特徴量を設定
     data.x = combined_features.to(device)
     
-    return data, adj_matrix, one_hot_labels, pca_features
+    # PCA特徴量のないデータオブジェクトを作成（ラベル分布特徴量のみ）
+    data_without_pca = data.clone()
+    data_without_pca.x = neighbor_features.to(device)
+    
+    print(f"ラベル分布特徴量のみのデータオブジェクトを作成:")
+    print(f"  ラベル分布特徴量の形状: {neighbor_features.shape}")
+    print(f"  - 隣接ノード特徴量: {neighbor_features.shape[1]}次元")
+    
+    return data, adj_matrix, one_hot_labels, pca_features, data_without_pca
 
 def create_co_label_embeddings(data, device, embedding_dim=32, window_size=1, max_hops=1, exclude_test_labels=True):
     """
@@ -551,6 +560,7 @@ def create_combined_features_with_pca_and_co_label(data, device, max_hops=2, exc
         pca_features: PCA圧縮された特徴量
         co_label_features: 共起ラベルエンベディング特徴量
         label_cooccurrence_matrix: ラベル共起行列
+        data_without_pca: PCA特徴量のないデータオブジェクト（ラベル分布特徴量のみ）
     """
     
     # 元の特徴量を取得
@@ -643,7 +653,17 @@ def create_combined_features_with_pca_and_co_label(data, device, max_hops=2, exc
     # 特徴量を設定
     data.x = combined_features.to(device)
     
-    return data, adj_matrix, one_hot_labels, pca_features, co_label_features, label_cooccurrence_matrix
+    # PCA特徴量のないデータオブジェクトを作成（ラベル分布特徴量のみ）
+    data_without_pca = data.clone()
+    label_distribution_features = torch.cat([neighbor_features, co_label_features], dim=1)
+    data_without_pca.x = label_distribution_features.to(device)
+    
+    print(f"ラベル分布特徴量のみのデータオブジェクトを作成:")
+    print(f"  ラベル分布特徴量の形状: {label_distribution_features.shape}")
+    print(f"  - 隣接ノード特徴量: {neighbor_features.shape[1]}次元")
+    print(f"  - 共起ラベルエンベディング: {co_label_features.shape[1]}次元")
+    
+    return data, adj_matrix, one_hot_labels, pca_features, co_label_features, label_cooccurrence_matrix, data_without_pca
 
 def display_co_label_embeddings_info(co_label_features, label_cooccurrence_matrix, dataset_name, sample_nodes=None):
     """
@@ -689,6 +709,99 @@ def display_co_label_embeddings_info(co_label_features, label_cooccurrence_matri
         if node_idx < co_label_features.shape[0]:
             embedding = co_label_features[node_idx].cpu().numpy()
             print(f"ノード {node_idx}: {embedding[:10]}...")  # 最初の10次元のみ表示
+
+def get_label_distribution_feature_indices(feature_info, pca_components=None, co_label_embedding_dim=None):
+    """
+    ラベル分布に関わる特徴量のインデックス範囲を取得する関数
+    
+    Args:
+        feature_info: 特徴量の情報を含む辞書（get_feature_infoで取得）
+        pca_components (int, optional): PCAで圧縮する次元数
+        co_label_embedding_dim (int, optional): 共起ラベルエンベディングの次元数
+    
+    Returns:
+        dict: 各特徴量部分のインデックス範囲を含む辞書
+    """
+    
+    num_classes = feature_info['num_classes']
+    max_hops = feature_info['max_hops']
+    
+    # ラベル分布ベクトルの次元数
+    label_distribution_dim = num_classes * max_hops
+    
+    # インデックス範囲を計算
+    indices = {
+        'label_distribution': {
+            'start': 0,
+            'end': label_distribution_dim,
+            'dim': label_distribution_dim
+        }
+    }
+    
+    current_end = label_distribution_dim
+    
+    # PCA特徴量の範囲（存在する場合）
+    if pca_components is not None:
+        indices['pca'] = {
+            'start': current_end,
+            'end': current_end + pca_components,
+            'dim': pca_components
+        }
+        current_end += pca_components
+    
+    # 共起ラベルエンベディングの範囲（存在する場合）
+    if co_label_embedding_dim is not None:
+        indices['co_label_embedding'] = {
+            'start': current_end,
+            'end': current_end + co_label_embedding_dim,
+            'dim': co_label_embedding_dim
+        }
+        current_end += co_label_embedding_dim
+    
+    # ラベル分布に関わる部分の総範囲
+    if co_label_embedding_dim is not None:
+        # ラベル分布ベクトル + 共起ラベルエンベディング
+        indices['label_distribution_combined'] = {
+            'start': 0,
+            'end': label_distribution_dim + co_label_embedding_dim,
+            'dim': label_distribution_dim + co_label_embedding_dim
+        }
+    else:
+        # ラベル分布ベクトルのみ
+        indices['label_distribution_combined'] = indices['label_distribution']
+    
+    return indices
+
+def extract_label_distribution_features_precise(data, feature_info, pca_components=None, co_label_embedding_dim=None):
+    """
+    正確な情報に基づいてラベル分布に関わる特徴量を抽出する関数
+    
+    Args:
+        data: PyTorch GeometricのDataオブジェクト
+        feature_info: 特徴量の情報を含む辞書（get_feature_infoで取得）
+        pca_components (int, optional): PCAで圧縮する次元数
+        co_label_embedding_dim (int, optional): 共起ラベルエンベディングの次元数
+    
+    Returns:
+        label_distribution_features: ラベル分布に関わる特徴量のみ
+        indices: 各特徴量部分のインデックス範囲
+    """
+    
+    # インデックス範囲を取得
+    indices = get_label_distribution_feature_indices(feature_info, pca_components, co_label_embedding_dim)
+    
+    # ラベル分布に関わる部分を抽出
+    combined_range = indices['label_distribution_combined']
+    label_distribution_features = data.x[:, combined_range['start']:combined_range['end']]
+    
+    print(f"正確なラベル分布特徴量抽出:")
+    print(f"  抽出範囲: {combined_range['start']} - {combined_range['end']}")
+    print(f"  抽出次元: {combined_range['dim']}")
+    print(f"  ラベル分布ベクトル: {indices['label_distribution']['dim']}次元")
+    if co_label_embedding_dim is not None:
+        print(f"  共起ラベルエンベディング: {co_label_embedding_dim}次元")
+    
+    return label_distribution_features, indices
 
 # 使用例:
 """
