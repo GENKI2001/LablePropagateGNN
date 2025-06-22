@@ -21,6 +21,12 @@ from .label_correlation_analyzer import (
     LabelCorrelationAnalyzer
 )
 
+from .edge_enhancer import (
+    EdgeEnhancer,
+    enhance_edges_by_similarity,
+    analyze_similarity_distribution
+)
+
 __all__ = [
     # feature_creator
     'create_neighbor_lable_features',
@@ -37,5 +43,10 @@ __all__ = [
     'CustomGraphDataset',
     
     # label_correlation_analyzer
-    'LabelCorrelationAnalyzer'
+    'LabelCorrelationAnalyzer',
+    
+    # edge_enhancer
+    'EdgeEnhancer',
+    'enhance_edges_by_similarity',
+    'analyze_similarity_distribution'
 ] 
