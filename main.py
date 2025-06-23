@@ -17,7 +17,7 @@ from models.gsl_labeldist import compute_loss
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Wisconsin'  # ここを変更してデータセットを切り替え
 
 # モデル選択
 # サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL'
@@ -33,9 +33,9 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
+MAX_HOPS = 1       # 最大hop数（1, 2, 3, ...）
 EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
-PCA_COMPONENTS = 50  # PCAで圧縮する次元数
+PCA_COMPONENTS = 100  # PCAで圧縮する次元数
 
 # モデルハイパーパラメータ
 HIDDEN_CHANNELS = 16  # 隠れ層の次元（GCN系）/ 8（GAT系）

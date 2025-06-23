@@ -112,12 +112,22 @@ def compute_loss(model, X, y_onehot, train_mask, B,
     y_onehot_train = y_onehot.clone()
     y_onehot_train[~train_mask] = 0  # trainデータ以外は0に設定
     Y_emb = model.get_label_embedding(y_onehot_train)  # [N, D]
-    H = A_hat @ Y_emb  # [N, D]
+    
+    # ラベル埋め込みを正規化
+    Y_emb_norm = F.normalize(Y_emb, p=2, dim=1)  # L2正規化
+    
+    H = A_hat @ Y_emb_norm  # [N, D]
 
     # 5. 同ラベルノード間のL2ノルム差最小化（trainデータのみ）
     diff = H.unsqueeze(1) - H.unsqueeze(0)  # [N, N, D]
     sq_dist = torch.sum(diff ** 2, dim=2)   # [N, N]
-    smooth_loss = torch.sum(B * sq_dist) / B.sum().clamp(min=1)
+    
+    # 正規化: 同ラベルペアの数で割る
+    num_same_label_pairs = B.sum()
+    if num_same_label_pairs > 0:
+        smooth_loss = torch.sum(B * sq_dist) / num_same_label_pairs
+    else:
+        smooth_loss = torch.tensor(0.0, device=sq_dist.device)
 
     # 6. 総合損失
     total_loss = ce_loss + lambda_sparse * sparse_loss + lambda_smooth * smooth_loss
