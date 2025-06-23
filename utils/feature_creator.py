@@ -253,10 +253,6 @@ def create_combined_features_with_pca(data, device, max_hops=2, exclude_test_lab
     one_hot_labels = encoder.transform(all_labels)
     
     if exclude_test_labels:
-        # テスト・検証ノードのラベル情報を隣接ノードの特徴量計算から除外する場合
-        print("テスト・検証ノードのラベル情報を隣接ノードの特徴量計算から除外します")
-        print(f"テスト・検証ノード数: {(~data.train_mask).sum().item()}")
-        print(f"訓練ノード数: {data.train_mask.sum().item()}")
         
         # テスト・検証ノードのラベルを無効化（特徴量計算時に使用しない）
         test_val_mask = ~data.train_mask

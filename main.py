@@ -4,6 +4,7 @@ import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
 from utils.feature_creator import create_neighbor_lable_features, create_combined_features_with_pca, display_node_features, get_feature_info
 from models import ModelFactory
+from models.gsl import compute_loss
 
 # ============================================================================
 # ハイパーパラメータなどの設定
@@ -16,11 +17,11 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # モデル選択
-# サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip'
-MODEL_NAME = 'GAT'  # ここを変更してモデルを切り替え
+# サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL'
+MODEL_NAME = 'GSL'  # ここを変更してモデルを切り替え
 
 # 実験設定
 NUM_RUNS = 20  # 実験回数
@@ -33,7 +34,7 @@ TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
 MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
-EXCLUDE_TEST_LABELS = False  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
+EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
 PCA_COMPONENTS = 50  # PCAで圧縮する次元数
 
 # モデルハイパーパラメータ
@@ -42,6 +43,11 @@ NUM_LAYERS = 2        # レイヤー数
 DROPOUT = 0.5         # ドロップアウト率
 NUM_HEADS = 8         # アテンションヘッド数（GAT系のみ）
 CONCAT_HEADS = True   # アテンションヘッドの出力を結合するか（GAT系のみ）
+
+# GSLモデル固有のハイパーパラメータ
+LABEL_EMBED_DIM = 16  # ラベル埋め込み次元
+LAMBDA_SPARSE = 0.01  # スパース正則化の重み（正規化後なので小さく）
+LAMBDA_SMOOTH = 0.5   # スムース正則化の重み
 
 # 最適化設定
 LEARNING_RATE = 0.01  # 学習率
@@ -84,6 +90,10 @@ print(f"ドロップアウト: {DROPOUT}")
 if MODEL_NAME.startswith('GAT'):
     print(f"アテンションヘッド数: {NUM_HEADS}")
     print(f"ヘッド結合: {CONCAT_HEADS}")
+if MODEL_NAME == 'GSL':
+    print(f"ラベル埋め込み次元: {LABEL_EMBED_DIM}")
+    print(f"スパース正則化重み: {LAMBDA_SPARSE}")
+    print(f"スムース正則化重み: {LAMBDA_SMOOTH}")
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
 
@@ -145,25 +155,59 @@ for run in range(NUM_RUNS):
             'concat': CONCAT_HEADS
         })
     
+    # GSLモデルの場合は追加パラメータを設定
+    if MODEL_NAME == 'GSL':
+        model_kwargs.update({
+            'num_nodes': num_nodes,
+            'label_embed_dim': LABEL_EMBED_DIM,
+            'adj_init': adj_matrix if adj_matrix is not None else None
+        })
+    
     model = ModelFactory.create_model(**model_kwargs).to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+    
+    # GSLモデル用のB行列を作成（同じラベルを持つノード間のみ1）
+    if MODEL_NAME == 'GSL':
+        B = torch.zeros(num_nodes, num_nodes, device=device)
+        # trainデータのみを使用してB行列を作成
+        train_indices = torch.where(run_data.train_mask)[0]
+        for i in train_indices:
+            for j in train_indices:
+                if run_data.y[i] == run_data.y[j]:
+                    B[i, j] = 1.0
     
     # 学習ループ
     def train():
         model.train()
         optimizer.zero_grad()
-        out = model(run_data.x, run_data.edge_index)
-        loss = F.cross_entropy(out[run_data.train_mask], run_data.y[run_data.train_mask])
-        loss.backward()
-        optimizer.step()
-        return loss.item()
+        
+        if MODEL_NAME == 'GSL':
+            # GSLモデルの場合は独自の損失関数を使用
+            total_loss, loss_dict = compute_loss(
+                model, run_data.x, one_hot_labels, run_data.train_mask, B,
+                lambda_sparse=LAMBDA_SPARSE, lambda_smooth=LAMBDA_SMOOTH
+            )
+            total_loss.backward()
+            optimizer.step()
+            return total_loss.item(), loss_dict
+        else:
+            # 通常のモデルの場合は標準的な損失関数を使用
+            out = model(run_data.x, run_data.edge_index)
+            loss = F.cross_entropy(out[run_data.train_mask], run_data.y[run_data.train_mask])
+            loss.backward()
+            optimizer.step()
+            return loss.item(), {}
     
     # 評価関数
     @torch.no_grad()
     def test():
         model.eval()
-        out = model(run_data.x, run_data.edge_index)
+        if MODEL_NAME == 'GSL':
+            # GSLモデルの場合はMLP部分のみを使用
+            out = model(run_data.x)
+        else:
+            out = model(run_data.x, run_data.edge_index)
         pred = out.argmax(dim=1)
         accs = []
         for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
@@ -179,7 +223,7 @@ for run in range(NUM_RUNS):
     final_test_acc = 0
     
     for epoch in range(NUM_EPOCHS + 1):
-        loss = train()
+        loss, loss_dict = train()
         train_acc, val_acc, test_acc = test()
         
         # ベスト結果を記録
@@ -195,7 +239,12 @@ for run in range(NUM_RUNS):
         
         # 進捗表示
         if epoch % DISPLAY_PROGRESS_EVERY == 0:
-            print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
+            if MODEL_NAME == 'GSL':
+                print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, CE: {loss_dict.get("ce_loss", 0):.4f}, '
+                      f'Sparse: {loss_dict.get("sparse_loss", 0):.4f}, Smooth: {loss_dict.get("smooth_loss", 0):.4f}, '
+                      f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
+            else:
+                print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
     
     # 結果を保存
     run_result = {

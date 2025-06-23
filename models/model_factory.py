@@ -2,6 +2,7 @@ import torch
 from .gcn import GCN, GCNWithSkip
 from .gat import GAT, GATWithSkip, GATv2
 from .mlp import MLP, MLPWithSkip
+from .gsl import GraphStructureLearningModel
 
 class ModelFactory:
     """
@@ -15,7 +16,7 @@ class ModelFactory:
         モデルを作成する
         
         Args:
-            model_name (str): モデル名 ('GCN', 'GAT', 'GATv2', etc.)
+            model_name (str): モデル名 ('GCN', 'GAT', 'GATv2', 'GSL', etc.)
             in_channels (int): 入力特徴量の次元
             hidden_channels (int): 隠れ層の次元
             out_channels (int): 出力特徴量の次元
@@ -30,7 +31,10 @@ class ModelFactory:
             'num_layers': 2,
             'dropout': 0.0,
             'num_heads': 8,
-            'concat': True
+            'concat': True,
+            'num_nodes': None,
+            'label_embed_dim': 16,
+            'adj_init': None
         }
         
         # キーワード引数でデフォルトパラメータを更新
@@ -103,6 +107,19 @@ class ModelFactory:
                 dropout=default_params['dropout']
             )
         
+        elif model_name == 'GSL':
+            if default_params['num_nodes'] is None:
+                raise ValueError("GSL model requires 'num_nodes' parameter")
+            return GraphStructureLearningModel(
+                input_dim=in_channels,
+                hidden_dim=hidden_channels,
+                output_dim=out_channels,
+                num_nodes=default_params['num_nodes'],
+                num_classes=out_channels,
+                label_embed_dim=default_params['label_embed_dim'],
+                adj_init=default_params['adj_init']
+            )
+        
         else:
             raise ValueError(f"Unsupported model: {model_name}")
     
@@ -152,6 +169,11 @@ class ModelFactory:
                 'description': '1-layer MLP with Skip Connections',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
                 'default_hidden_channels': 16
+            },
+            'GSL': {
+                'description': 'Graph Structure Learning Model',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_nodes', 'label_embed_dim', 'adj_init'],
+                'default_hidden_channels': 16
             }
         }
         
@@ -165,4 +187,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip'] 
+        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL'] 
