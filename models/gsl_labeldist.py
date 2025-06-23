@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class GraphStructureLearningModel(nn.Module):
+class GSLModel_LabelDistr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,
                  num_nodes, num_classes, label_embed_dim=16,
                  adj_init=None):  # ← 追加

@@ -2,7 +2,7 @@ import torch
 from .gcn import GCN, GCNWithSkip
 from .gat import GAT, GATWithSkip, GATv2
 from .mlp import MLP, MLPWithSkip
-from .gsl import GraphStructureLearningModel
+from .gsl import GSLModel_LabelDistr
 
 class ModelFactory:
     """
@@ -110,7 +110,7 @@ class ModelFactory:
         elif model_name == 'GSL':
             if default_params['num_nodes'] is None:
                 raise ValueError("GSL model requires 'num_nodes' parameter")
-            return GraphStructureLearningModel(
+            return GSLModel_LabelDistr(
                 input_dim=in_channels,
                 hidden_dim=hidden_channels,
                 output_dim=out_channels,
