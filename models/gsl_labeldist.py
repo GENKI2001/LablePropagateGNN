@@ -2,134 +2,101 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class GSLModel_LabelDistr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,
                  num_nodes, num_classes, label_embed_dim=16,
-                 adj_init=None):  # ← 追加
+                 adj_init=None):
         super().__init__()
 
+        # ノード分類用 MLP
         self.mlp = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, output_dim)
         )
 
-        # 分類用隣接行列の初期化（元の隣接行列 or ランダム）
+        # 学習対象の隣接行列（A_hat の logits）
         if adj_init is not None:
             assert adj_init.shape == (num_nodes, num_nodes)
-            adj_init = torch.clamp(adj_init, min=1e-6, max=1.0)  # 安定化のため
+            adj_init = torch.clamp(adj_init, min=1e-6, max=1.0)
             self.adj_logits = nn.Parameter(torch.logit(adj_init, eps=1e-6).clone())
         else:
             self.adj_logits = nn.Parameter(torch.randn(num_nodes, num_nodes))
 
-        # ラベル埋め込み
+        # ラベル埋め込み（※今は使っていないが保持可能）
         self.label_embed = nn.Parameter(torch.randn(num_classes, label_embed_dim))
+
+    def get_learned_adjacency(self):
+        # GATスタイル softmax attention（各ノードごとに重み正規化）
+        return F.softmax(self.adj_logits, dim=1)  # [N, N]
 
     def forward(self, X, onehot_labels, max_hops=4):
         """
-        X: 結合された特徴量 [N, pca_dim + neighbor_dim]
-        onehot_labels: one-hotラベル [N, num_classes]
-        max_hops: 最大hop数
+        X: 入力特徴量 [N, F]
+        onehot_labels: one-hot ラベル [N, C]
+        max_hops: ラベル分布の伝播ステップ数
         """
-        # Xとonehot_labelsをPyTorchテンソルに変換
         if not isinstance(X, torch.Tensor):
             X = torch.tensor(X, dtype=torch.float32)
-        
         if not isinstance(onehot_labels, torch.Tensor):
             onehot_labels = torch.tensor(onehot_labels, dtype=torch.float32)
-        
-        # 適切なデバイスに移動
+
         device = X.device
         onehot_labels = onehot_labels.to(device)
+        A_hat = self.get_learned_adjacency()
 
-        # 学習後の隣接行列を取得
-        A_hat = self.get_learned_adjacency()  # [N, N]
-        
-        # 正規化（行方向の和で割る）
-        D_inv = torch.diag(1.0 / (A_hat.sum(dim=1) + 1e-8))  # 対角行列の逆数
-        A_norm = D_inv @ A_hat  # 正規化された隣接行列
-        
-        # 各hopのラベル分布を計算
+        # ラベル分布の伝播
         label_dist_list = []
         current_dist = onehot_labels
-        
-        for hop in range(1, max_hops + 1):
-            # n-hopラベル分布: A_norm @ previous_dist
-            current_dist = A_norm @ current_dist  # [N, num_classes]
-            # 行方向で正規化（softmax）
+
+        for _ in range(max_hops):
+            current_dist = A_hat @ current_dist
             current_dist = F.softmax(current_dist, dim=1)
             label_dist_list.append(current_dist)
-        
-        # 全てのhopのラベル分布を結合
-        label_dist_combined = torch.cat(label_dist_list, dim=1)  # [N, max_hops * num_classes]
-        
-        # 結合された特徴量（PCA + 隣接ノード特徴量）とラベル分布を結合
-        combined_features = torch.cat([X, label_dist_combined], dim=1)  # [N, (pca_dim + neighbor_dim) + max_hops*num_classes]
-        
-        # MLPで最終的な予測
+
+        label_dist_combined = torch.cat(label_dist_list, dim=1)
+        combined_features = torch.cat([X, label_dist_combined], dim=1)
         return self.mlp(combined_features)
-
-    def get_learned_adjacency(self):
-        return torch.sigmoid(self.adj_logits)
-
-    def get_label_embedding(self, y_onehot):
-        return y_onehot @ self.label_embed
 
 
 def compute_loss(model, X, y_onehot, train_mask, B,
-                 lambda_sparse=0.3, lambda_smooth=0.3, max_hops=4):
+                 lambda_sparse=0.0, lambda_smooth=0.3, max_hops=4):
     """
-    複合損失関数
-    - y_onehot: [N, C] one-hotラベル
-    - B: [N, N] 同じラベルを持つノード間のみ 1（trainデータのみ）
-    - max_hops: 最大hop数
+    - X: 入力特徴量 [N, F]
+    - y_onehot: one-hot ラベル [N, C]
+    - train_mask: 訓練ノードを示す bool ベクトル [N]
+    - B: 同じラベルを持つノードペア (i,j) に 1 の行列 [N, N]
     """
-    # Xとy_onehotをPyTorchテンソルに変換
     if not isinstance(X, torch.Tensor):
         X = torch.tensor(X, dtype=torch.float32)
-    
     if not isinstance(y_onehot, torch.Tensor):
         y_onehot = torch.tensor(y_onehot, dtype=torch.float32)
-    
-    # 適切なデバイスに移動
+
     device = X.device
     y_onehot = y_onehot.to(device)
-    
-    # 1. ノード分類（logits）
-    logits = model(X, y_onehot, max_hops=max_hops)  # [N, C]
 
-    # 2. クロスエントロピー損失
-    ce_loss = F.cross_entropy(logits[train_mask], y_onehot[train_mask].argmax(1))
+    # 1. 分類予測
+    logits = model(X, y_onehot, max_hops=max_hops)
+    ce_loss = F.cross_entropy(logits[train_mask], y_onehot[train_mask].argmax(dim=1))
 
-    # 3. スパース正則化（L1ノルム）- 正規化版
-    A_hat = model.get_learned_adjacency()  # [N, N]
-    # 対角成分を除外（自己ループは常に1に近いため）
-    mask = ~torch.eye(A_hat.shape[0], dtype=torch.bool, device=A_hat.device)
-    sparse_loss = torch.sum(torch.abs(A_hat[mask])) / mask.sum()  # 平均値で正規化
+    # 2. スパース正則化（softmaxなので効果は薄いが残せる）
+    sparse_loss = torch.tensor(0.0, device=device)
 
-    # 4. ラベル埋め込み & 1-hopラベル分布伝播（trainデータのみ）
-    # trainデータのラベル埋め込みのみを使用
+    # 3. ラベル分布のスムージング正則化
+    A_hat = model.get_learned_adjacency()
     y_onehot_train = y_onehot.clone()
-    y_onehot_train[~train_mask] = 0  # trainデータ以外は0に設定
-    Y_emb = model.get_label_embedding(y_onehot_train)  # [N, D]
-    
-    # ラベル埋め込みを正規化
-    Y_emb_norm = F.normalize(Y_emb, p=2, dim=1)  # L2正規化
-    
-    H = A_hat @ Y_emb_norm  # [N, D]
+    y_onehot_train[~train_mask] = 0.0  # ラベルリーク防止
 
-    # 5. 同ラベルノード間のL2ノルム差最小化（trainデータのみ）
-    diff = H.unsqueeze(1) - H.unsqueeze(0)  # [N, N, D]
+    H = A_hat @ y_onehot_train  # [N, C]
+    H = F.normalize(H, p=1, dim=1)  # 分布として扱うため正規化
+
+    diff = H.unsqueeze(1) - H.unsqueeze(0)  # [N, N, C]
     sq_dist = torch.sum(diff ** 2, dim=2)   # [N, N]
-    
-    # 正規化: 同ラベルペアの数で割る
-    num_same_label_pairs = B.sum()
-    if num_same_label_pairs > 0:
-        smooth_loss = torch.sum(B * sq_dist) / num_same_label_pairs
-    else:
-        smooth_loss = torch.tensor(0.0, device=sq_dist.device)
+    num_same_label_pairs = B.sum().clamp(min=1)
+    smooth_loss = torch.sum(B * sq_dist) / num_same_label_pairs
 
-    # 6. 総合損失
+    # 4. 総合損失
     total_loss = ce_loss + lambda_sparse * sparse_loss + lambda_smooth * smooth_loss
 
     return total_loss, {
