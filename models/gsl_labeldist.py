@@ -25,8 +25,49 @@ class GSLModel_LabelDistr(nn.Module):
         # ラベル埋め込み
         self.label_embed = nn.Parameter(torch.randn(num_classes, label_embed_dim))
 
-    def forward(self, X):
-        return self.mlp(X)
+    def forward(self, X, onehot_labels, max_hops=4):
+        """
+        X: 結合された特徴量 [N, pca_dim + neighbor_dim]
+        onehot_labels: one-hotラベル [N, num_classes]
+        max_hops: 最大hop数
+        """
+        # Xとonehot_labelsをPyTorchテンソルに変換
+        if not isinstance(X, torch.Tensor):
+            X = torch.tensor(X, dtype=torch.float32)
+        
+        if not isinstance(onehot_labels, torch.Tensor):
+            onehot_labels = torch.tensor(onehot_labels, dtype=torch.float32)
+        
+        # 適切なデバイスに移動
+        device = X.device
+        onehot_labels = onehot_labels.to(device)
+
+        # 学習後の隣接行列を取得
+        A_hat = self.get_learned_adjacency()  # [N, N]
+        
+        # 正規化（行方向の和で割る）
+        D_inv = torch.diag(1.0 / (A_hat.sum(dim=1) + 1e-8))  # 対角行列の逆数
+        A_norm = D_inv @ A_hat  # 正規化された隣接行列
+        
+        # 各hopのラベル分布を計算
+        label_dist_list = []
+        current_dist = onehot_labels
+        
+        for hop in range(1, max_hops + 1):
+            # n-hopラベル分布: A_norm @ previous_dist
+            current_dist = A_norm @ current_dist  # [N, num_classes]
+            # 行方向で正規化（softmax）
+            current_dist = F.softmax(current_dist, dim=1)
+            label_dist_list.append(current_dist)
+        
+        # 全てのhopのラベル分布を結合
+        label_dist_combined = torch.cat(label_dist_list, dim=1)  # [N, max_hops * num_classes]
+        
+        # 結合された特徴量（PCA + 隣接ノード特徴量）とラベル分布を結合
+        combined_features = torch.cat([X, label_dist_combined], dim=1)  # [N, (pca_dim + neighbor_dim) + max_hops*num_classes]
+        
+        # MLPで最終的な予測
+        return self.mlp(combined_features)
 
     def get_learned_adjacency(self):
         return torch.sigmoid(self.adj_logits)
@@ -36,18 +77,26 @@ class GSLModel_LabelDistr(nn.Module):
 
 
 def compute_loss(model, X, y_onehot, train_mask, B,
-                 lambda_sparse=0.3, lambda_smooth=0.3):
+                 lambda_sparse=0.3, lambda_smooth=0.3, max_hops=4):
     """
     複合損失関数
     - y_onehot: [N, C] one-hotラベル
     - B: [N, N] 同じラベルを持つノード間のみ 1（trainデータのみ）
+    - max_hops: 最大hop数
     """
-    # y_onehotをPyTorchテンソルに変換
+    # Xとy_onehotをPyTorchテンソルに変換
+    if not isinstance(X, torch.Tensor):
+        X = torch.tensor(X, dtype=torch.float32)
+    
     if not isinstance(y_onehot, torch.Tensor):
-        y_onehot = torch.tensor(y_onehot, device=X.device, dtype=torch.float32)
+        y_onehot = torch.tensor(y_onehot, dtype=torch.float32)
+    
+    # 適切なデバイスに移動
+    device = X.device
+    y_onehot = y_onehot.to(device)
     
     # 1. ノード分類（logits）
-    logits = model(X)  # [N, C]
+    logits = model(X, y_onehot, max_hops=max_hops)  # [N, C]
 
     # 2. クロスエントロピー損失
     ce_loss = F.cross_entropy(logits[train_mask], y_onehot[train_mask].argmax(1))

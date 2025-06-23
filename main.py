@@ -4,7 +4,7 @@ import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
 from utils.feature_creator import create_neighbor_lable_features, create_combined_features_with_pca, display_node_features, get_feature_info
 from models import ModelFactory
-from models.gsl import compute_loss
+from models.gsl_labeldist import compute_loss
 
 # ============================================================================
 # ハイパーパラメータなどの設定
@@ -17,7 +17,7 @@ from models.gsl import compute_loss
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Chameleon'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # モデル選択
 # サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL'
@@ -157,7 +157,10 @@ for run in range(NUM_RUNS):
     
     # GSLモデルの場合は追加パラメータを設定
     if MODEL_NAME == 'GSL':
+        # PCA特徴量 + 隣接ノード特徴量 + ラベル分布（MAX_HOPS分）の次元を計算
+        combined_input_dim = feature_info['feature_dim'] + MAX_HOPS * dataset.num_classes
         model_kwargs.update({
+            'in_channels': combined_input_dim,  # (PCA + 隣接ノード特徴量) + MAX_HOPS*ラベル分布の次元
             'num_nodes': num_nodes,
             'label_embed_dim': LABEL_EMBED_DIM,
             'adj_init': adj_matrix if adj_matrix is not None else None
@@ -186,7 +189,7 @@ for run in range(NUM_RUNS):
             # GSLモデルの場合は独自の損失関数を使用
             total_loss, loss_dict = compute_loss(
                 model, run_data.x, one_hot_labels, run_data.train_mask, B,
-                lambda_sparse=LAMBDA_SPARSE, lambda_smooth=LAMBDA_SMOOTH
+                lambda_sparse=LAMBDA_SPARSE, lambda_smooth=LAMBDA_SMOOTH, max_hops=MAX_HOPS
             )
             total_loss.backward()
             optimizer.step()
@@ -204,8 +207,8 @@ for run in range(NUM_RUNS):
     def test():
         model.eval()
         if MODEL_NAME == 'GSL':
-            # GSLモデルの場合はMLP部分のみを使用
-            out = model(run_data.x)
+            # GSLモデルの場合は結合された特徴量とone-hotラベルを使用
+            out = model(run_data.x, one_hot_labels, max_hops=MAX_HOPS)
         else:
             out = model(run_data.x, run_data.edge_index)
         pred = out.argmax(dim=1)

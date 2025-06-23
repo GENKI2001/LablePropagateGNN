@@ -2,7 +2,7 @@ import torch
 from .gcn import GCN, GCNWithSkip
 from .gat import GAT, GATWithSkip, GATv2
 from .mlp import MLP, MLPWithSkip
-from .gsl import GSLModel_LabelDistr
+from .gsl_labeldist import GSLModel_LabelDistr
 
 class ModelFactory:
     """
