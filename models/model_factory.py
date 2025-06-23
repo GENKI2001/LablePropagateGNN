@@ -110,6 +110,12 @@ class ModelFactory:
         elif model_name == 'GSL':
             if default_params['num_nodes'] is None:
                 raise ValueError("GSL model requires 'num_nodes' parameter")
+            
+            # GSLモデルの追加パラメータ
+            model_type = kwargs.get('model_type', 'mlp')
+            num_layers = kwargs.get('num_layers', 2)
+            dropout = kwargs.get('dropout', 0.0)
+            
             return GSLModel_LabelDistr(
                 input_dim=in_channels,
                 hidden_dim=hidden_channels,
@@ -117,7 +123,10 @@ class ModelFactory:
                 num_nodes=default_params['num_nodes'],
                 num_classes=out_channels,
                 label_embed_dim=default_params['label_embed_dim'],
-                adj_init=default_params['adj_init']
+                adj_init=default_params['adj_init'],
+                model_type=model_type,
+                num_layers=num_layers,
+                dropout=dropout
             )
         
         else:
@@ -171,8 +180,8 @@ class ModelFactory:
                 'default_hidden_channels': 16
             },
             'GSL': {
-                'description': 'Graph Structure Learning Model',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_nodes', 'label_embed_dim', 'adj_init'],
+                'description': 'Graph Structure Learning Model (supports MLP and GCN classifiers)',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_nodes', 'label_embed_dim', 'adj_init', 'model_type', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
             }
         }

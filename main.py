@@ -14,7 +14,7 @@ from models.gsl_labeldist import compute_loss
 # サポートされているデータセット:
 # CustomGraph: 'CustomGraph_Chain'
 # Planetoid: 'Cora', 'Citeseer', 'Pubmed'
-# WebKB: 'Cornell', 'Texas', 'Wisconsin'
+# WebKB: 'Cornell', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
 DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
@@ -33,7 +33,7 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 1       # 最大hop数（1, 2, 3, ...）
+MAX_HOPS = 3       # 最大hop数（1, 2, 3, ...）
 EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
 PCA_COMPONENTS = 100  # PCAで圧縮する次元数
 
@@ -47,7 +47,10 @@ CONCAT_HEADS = True   # アテンションヘッドの出力を結合するか�
 # GSLモデル固有のハイパーパラメータ
 LABEL_EMBED_DIM = 16  # ラベル埋め込み次元
 LAMBDA_SPARSE = 0.01  # スパース正則化の重み（正規化後なので小さく）
-LAMBDA_SMOOTH = 0.5   # スムース正則化の重み
+LAMBDA_SMOOTH = 50.0   # ラベルスムース正則化の重み
+LAMBDA_FEAT_SMOOTH = 0  # 特徴量スムージング正則化の重み
+# GSLモデルの分類器タイプ（'mlp' または 'gcn'）
+GSL_MODEL_TYPE = 'mlp'  # ここを'mlp'または'gcn'に変更して切り替え
 
 # 最適化設定
 LEARNING_RATE = 0.01  # 学習率
@@ -94,6 +97,8 @@ if MODEL_NAME == 'GSL':
     print(f"ラベル埋め込み次元: {LABEL_EMBED_DIM}")
     print(f"スパース正則化重み: {LAMBDA_SPARSE}")
     print(f"スムース正則化重み: {LAMBDA_SMOOTH}")
+    print(f"特徴量スムージング正則化重み: {LAMBDA_FEAT_SMOOTH}")
+    print(f"モデルタイプ: {GSL_MODEL_TYPE}")
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
 
@@ -163,7 +168,10 @@ for run in range(NUM_RUNS):
             'in_channels': combined_input_dim,  # (PCA + 隣接ノード特徴量) + MAX_HOPS*ラベル分布の次元
             'num_nodes': num_nodes,
             'label_embed_dim': LABEL_EMBED_DIM,
-            'adj_init': adj_matrix if adj_matrix is not None else None
+            'adj_init': adj_matrix if adj_matrix is not None else None,
+            'model_type': GSL_MODEL_TYPE,
+            'num_layers': NUM_LAYERS,
+            'dropout': DROPOUT,
         })
     
     model = ModelFactory.create_model(**model_kwargs).to(device)
@@ -189,7 +197,8 @@ for run in range(NUM_RUNS):
             # GSLモデルの場合は独自の損失関数を使用
             total_loss, loss_dict = compute_loss(
                 model, run_data.x, one_hot_labels, run_data.train_mask, B,
-                lambda_sparse=LAMBDA_SPARSE, lambda_smooth=LAMBDA_SMOOTH, max_hops=MAX_HOPS
+                lambda_sparse=LAMBDA_SPARSE, lambda_smooth=LAMBDA_SMOOTH, 
+                lambda_feat_smooth=LAMBDA_FEAT_SMOOTH, max_hops=MAX_HOPS
             )
             total_loss.backward()
             optimizer.step()
@@ -245,6 +254,7 @@ for run in range(NUM_RUNS):
             if MODEL_NAME == 'GSL':
                 print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, CE: {loss_dict.get("ce_loss", 0):.4f}, '
                       f'Sparse: {loss_dict.get("sparse_loss", 0):.4f}, Smooth: {loss_dict.get("smooth_loss", 0):.4f}, '
+                      f'FeatSmooth: {loss_dict.get("feat_smooth_loss", 0):.4f}, '
                       f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
             else:
                 print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
