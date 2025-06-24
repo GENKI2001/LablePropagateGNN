@@ -7,7 +7,7 @@ class GSLModel_LabelDistr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,
                  num_nodes, num_classes, label_embed_dim=16,
                  adj_init=None, model_type='mlp', num_layers=2, dropout=0.5,
-                 damping_alpha=0.5):
+                 damping_alpha=0.3):
         super().__init__()
 
         self.model_type = model_type
@@ -154,11 +154,14 @@ def compute_loss(model, X, y_onehot, train_mask, B,
     entropy = -torch.sum(A_hat * torch.log(A_hat + 1e-8), dim=1)
     sparse_loss = torch.mean(entropy)
 
-    y_onehot_train = y_onehot.clone()
-    H = A_hat @ y_onehot_train
+    # 3. ラベルスムージング損失（1ステップのラベル伝播）
+    alpha = torch.sigmoid(model.damping_alpha)
+    Y1 = alpha * (A_hat @ y_onehot) + (1 - alpha) * y_onehot
+    Y1 = F.softmax(Y1, dim=1)
 
-    diff_label = H.unsqueeze(1) - H.unsqueeze(0)
-    sq_dist_label = torch.sum(diff_label ** 2, dim=2)
+    diff_label = Y1.unsqueeze(1) - Y1.unsqueeze(0)  # [N, N, C]
+    sq_dist_label = torch.sum(diff_label ** 2, dim=2)  # [N, N]
+
     num_same_label_pairs = B.sum().clamp(min=1)
     smooth_loss = torch.sum(B * sq_dist_label) / num_same_label_pairs
 

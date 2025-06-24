@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
-from utils.feature_creator import create_neighbor_lable_features, create_combined_features_with_pca, display_node_features, get_feature_info
+from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info
 from models import ModelFactory
 from models.gsl_labeldist import compute_loss
 
@@ -17,7 +17,7 @@ from models.gsl_labeldist import compute_loss
 # WebKB: 'Cornell', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Chameleon'  # ここを変更してデータセットを切り替え
 
 # モデル選択
 # サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL'
@@ -25,17 +25,19 @@ MODEL_NAME = 'GSL'  # ここを変更してモデルを切り替え
 
 # 実験設定
 NUM_RUNS = 50  # 実験回数
-NUM_EPOCHS = 400  # エポック数
+NUM_EPOCHS = 600  # エポック数
 
 # データ分割設定
 TRAIN_RATIO = 0.7  # 訓練データの割合
-VAL_RATIO = 0.01    # 検証データの割合
-TEST_RATIO = 0.3   # テストデータの割合
+VAL_RATIO = 0.1    # 検証データの割合
+TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
 MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
 EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
-PCA_COMPONENTS = 100  # PCAで圧縮する次元数
+PCA_COMPONENTS = 128  # PCAで圧縮する次元数
+USE_PCA = True  # True: PCA圧縮, False: 生の特徴量
+USE_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を結合, False: 結合しない
 
 # モデルハイパーパラメータ
 HIDDEN_CHANNELS = 16  # 隠れ層の次元（GCN系）/ 8（GAT系）
@@ -46,7 +48,7 @@ CONCAT_HEADS = True   # アテンションヘッドの出力を結合するか�
 
 # GSLモデル固有のハイパーパラメータ
 LABEL_EMBED_DIM = 16  # ラベル埋め込み次元
-LAMBDA_SPARSE = 0.01  # スパース正則化の重み（正規化後なので小さく）
+LAMBDA_SPARSE = 0.5  # スパース正則化の重み
 LAMBDA_SMOOTH = 1.0   # ラベルスムース正則化の重み
 LAMBDA_FEAT_SMOOTH = 0.00  # 特徴量スムージング正則化の重み
 # GSLモデルの分類器タイプ（'mlp' または 'gcn' または 'linkx'）
@@ -70,6 +72,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # データセット読み込み
 data, dataset = load_dataset(DATASET_NAME, device)
 
+# 実験前にPCA処理を実行
+if USE_PCA:
+    print(f"\n=== 実験前PCA処理 ===")
+    data, pca_features, pca = create_pca_features(data, device, pca_components=PCA_COMPONENTS)
+else:
+    print(f"\n=== PCA処理をスキップ ===")
+    print(f"生の特徴量を使用します: {data.x.shape}")
+
 # モデル情報を取得
 model_info = ModelFactory.get_model_info(MODEL_NAME)
 default_hidden_channels = model_info.get('default_hidden_channels', HIDDEN_CHANNELS)
@@ -87,6 +97,8 @@ print(f"データ分割: 訓練={TRAIN_RATIO:.1%}, 検証={VAL_RATIO:.1%}, テ�
 print(f"最大hop数: {MAX_HOPS}")
 print(f"テストラベル除外: {EXCLUDE_TEST_LABELS}")
 print(f"PCA圧縮次元数: {PCA_COMPONENTS}")
+print(f"PCA使用: {USE_PCA}")
+print(f"隣接ノード特徴量使用: {USE_NEIGHBOR_LABEL_FEATURES}")
 print(f"隠れ層次元: {default_hidden_channels}")
 print(f"レイヤー数: {NUM_LAYERS}")
 print(f"ドロップアウト: {DROPOUT}")
@@ -131,9 +143,10 @@ for run in range(NUM_RUNS):
     
     print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
     
-    run_data, adj_matrix, one_hot_labels, pca_features = create_combined_features_with_pca(
+    # 実験中にラベル特徴量を作成
+    run_data, adj_matrix, one_hot_labels = create_label_features(
         run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS, 
-        pca_components=PCA_COMPONENTS
+        use_neighbor_label_features=USE_NEIGHBOR_LABEL_FEATURES
     )
 
     # 特徴量情報を取得
