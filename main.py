@@ -5,6 +5,7 @@ from utils.dataset_loader import load_dataset, get_supported_datasets
 from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info
 from models import ModelFactory
 from models.gsl_labeldist import compute_loss
+from utils.label_correlation_analyzer import LabelCorrelationAnalyzer
 
 # ============================================================================
 # ハイパーパラメータなどの設定
@@ -17,15 +18,15 @@ from models.gsl_labeldist import compute_loss
 # WebKB: 'Cornell', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Chameleon'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # モデル選択
 # サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL'
 MODEL_NAME = 'GSL'  # ここを変更してモデルを切り替え
 
 # 実験設定
-NUM_RUNS = 50  # 実験回数
-NUM_EPOCHS = 600  # エポック数
+NUM_RUNS = 1  # 実験回数
+NUM_EPOCHS = 1000  # エポック数
 
 # データ分割設定
 TRAIN_RATIO = 0.7  # 訓練データの割合
@@ -48,11 +49,18 @@ CONCAT_HEADS = True   # アテンションヘッドの出力を結合するか�
 
 # GSLモデル固有のハイパーパラメータ
 LABEL_EMBED_DIM = 16  # ラベル埋め込み次元
-LAMBDA_SPARSE = 0.5  # スパース正則化の重み
+LAMBDA_SPARSE = 0  # スパース正則化の重み
 LAMBDA_SMOOTH = 1.0   # ラベルスムース正則化の重み
 LAMBDA_FEAT_SMOOTH = 0.00  # 特徴量スムージング正則化の重み
 # GSLモデルの分類器タイプ（'mlp' または 'gcn' または 'linkx'）
 GSL_MODEL_TYPE = 'mlp'  # ここを'mlp'、'gcn'、または'linkx'に変更して切り替え
+# GSL隣接行列初期化の強度（0.0-1.0、大きいほど元のグラフ構造を強く反映）
+GSL_ADJ_INIT_STRENGTH = 0.8  # 0.8: 0->0.1, 1->0.9 の確率で初期化
+
+# GSL隣接行列分析設定
+ANALYZE_GSL_ADJACENCY = True  # GSL隣接行列を分析するかどうか
+GSL_ADJACENCY_THRESHOLD = 0.1  # 確率を01に変換するための閾値
+SAVE_GSL_PLOTS = True  # GSL分析結果のプロットを保存するかどうか
 
 # 最適化設定
 LEARNING_RATE = 0.01  # 学習率
@@ -111,8 +119,18 @@ if MODEL_NAME == 'GSL':
     print(f"スムース正則化重み: {LAMBDA_SMOOTH}")
     print(f"特徴量スムージング正則化重み: {LAMBDA_FEAT_SMOOTH}")
     print(f"モデルタイプ: {GSL_MODEL_TYPE}")
+    print(f"隣接行列初期化強度: {GSL_ADJ_INIT_STRENGTH}")
+    print(f"GSL隣接行列分析: {ANALYZE_GSL_ADJACENCY}")
+    if ANALYZE_GSL_ADJACENCY:
+        print(f"GSL隣接行列閾値: {GSL_ADJACENCY_THRESHOLD}")
+        print(f"GSLプロット保存: {SAVE_GSL_PLOTS}")
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
+
+# GSL隣接行列分析用のアナライザーを初期化
+if MODEL_NAME == 'GSL' and ANALYZE_GSL_ADJACENCY:
+    gsl_analyzer = LabelCorrelationAnalyzer(device)
+    print(f"\nGSL隣接行列分析アナライザーを初期化しました")
 
 # 結果を保存するリスト
 all_results = []
@@ -185,7 +203,7 @@ for run in range(NUM_RUNS):
             'model_type': GSL_MODEL_TYPE,
             'num_layers': NUM_LAYERS,
             'dropout': DROPOUT,
-            'damping_alpha': 0.8,  # ラベル伝播の減衰係数
+            'adj_init_strength': GSL_ADJ_INIT_STRENGTH,
         })
     
     model = ModelFactory.create_model(**model_kwargs).to(device)
@@ -273,6 +291,54 @@ for run in range(NUM_RUNS):
             else:
                 print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
     
+    # GSL隣接行列分析（最終エポック後）
+    if MODEL_NAME == 'GSL' and ANALYZE_GSL_ADJACENCY and run == 0:  # 最初の実験でのみ実行
+        print(f"\n=== GSL隣接行列分析（実験 {run + 1}） ===")
+        
+        # 元のグラフ構造を分析
+        print(f"元のグラフ構造を分析中...")
+        original_result = gsl_analyzer.analyze_dataset(DATASET_NAME, save_plots=SAVE_GSL_PLOTS, output_dir='./')
+        
+        # GSL学習済み隣接行列を分析
+        print(f"GSL学習済み隣接行列を分析中...")
+        gsl_result = gsl_analyzer.analyze_gsl_adjacency(
+            model, run_data, dataset, 
+            threshold=GSL_ADJACENCY_THRESHOLD, 
+            save_plots=SAVE_GSL_PLOTS, 
+            output_dir='./'
+        )
+        
+        # 比較結果を表示
+        print(f"\n=== GSL隣接行列比較結果 ===")
+        print(f"元のグラフエッジ数: {original_result['dataset_info']['num_edges']:,}")
+        print(f"GSL生成エッジ数: {gsl_result['dataset_info']['num_edges']:,}")
+        print(f"エッジ数差分: {gsl_result['dataset_info']['num_edges'] - original_result['dataset_info']['num_edges']:,}")
+        
+        # 同質性を計算して比較
+        def calculate_homophily(result):
+            total_edges = result['total_edges']
+            same_label_edges = 0
+            for (label1, label2), count in result['pair_counts'].items():
+                if label1 == label2:
+                    same_label_edges += count
+            return same_label_edges / total_edges if total_edges > 0 else 0
+        
+        original_homophily = calculate_homophily(original_result)
+        gsl_homophily = calculate_homophily(gsl_result)
+        
+        print(f"元のグラフ同質性: {original_homophily:.4f}")
+        print(f"GSL生成グラフ同質性: {gsl_homophily:.4f}")
+        print(f"同質性差分: {gsl_homophily - original_homophily:.4f}")
+        
+        # GSL隣接行列の統計情報
+        gsl_info = gsl_result['gsl_info']
+        print(f"\nGSL隣接行列統計:")
+        print(f"  スパース性: {gsl_info['sparsity']:.4f}")
+        print(f"  最大確率: {gsl_info['max_probability']:.4f}")
+        print(f"  最小確率: {gsl_info['min_probability']:.4f}")
+        print(f"  平均確率: {gsl_info['mean_probability']:.4f}")
+        print(f"  使用閾値: {gsl_info['threshold']}")
+    
     # 結果を保存
     run_result = {
         'run': run + 1,
@@ -322,4 +388,12 @@ print(f"\n=== 実験完了 ===")
 print(f"データセット: {DATASET_NAME}")
 print(f"モデル: {MODEL_NAME}")
 print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
-print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}") 
+print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
+
+# GSL隣接行列分析の結果サマリー
+if MODEL_NAME == 'GSL' and ANALYZE_GSL_ADJACENCY:
+    print(f"\n=== GSL隣接行列分析完了 ===")
+    print(f"分析結果は以下のフォルダに保存されました:")
+    print(f"  - 元のグラフ分析: label_correlation_images/")
+    print(f"  - GSL隣接行列分析: gsl_adjacency_images/")
+    print(f"閾値設定: {GSL_ADJACENCY_THRESHOLD}") 

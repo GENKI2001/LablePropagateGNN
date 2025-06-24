@@ -9,107 +9,160 @@ import warnings
 import os
 warnings.filterwarnings('ignore')
 
-# 日本語フォント設定
-plt.rcParams['font.family'] = ['DejaVu Sans', 'Hiragino Sans', 'Yu Gothic', 'Meiryo', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
-
 class LabelCorrelationAnalyzer:
     """
-    隣接ノード間のラベル相関を分析・可視化するクラス
+    Class for analyzing and visualizing label correlations between adjacent nodes
     """
     
     def __init__(self, device=None):
         """
-        初期化
+        Initialize the analyzer
         
         Args:
-            device: 使用するデバイス（Noneの場合は自動選択）
+            device: Device to use (None for auto-selection)
         """
         self.device = device if device is not None else torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.results = {}
         
     def analyze_dataset(self, dataset_name, save_plots=True, output_dir='./'):
         """
-        指定されたデータセットのラベル相関を分析
+        Analyze label correlations for the specified dataset
         
         Args:
-            dataset_name (str): データセット名
-            save_plots (bool): プロットを保存するかどうか
-            output_dir (str): 出力ディレクトリ
+            dataset_name (str): Dataset name
+            save_plots (bool): Whether to save plots
+            output_dir (str): Output directory
         """
-        print(f"\n=== {dataset_name} データセットのラベル相関分析 ===")
+        print(f"\n=== {dataset_name} Dataset Label Correlation Analysis ===")
         
-        # データセット読み込み
+        # Load dataset
         data, dataset = load_dataset(dataset_name, self.device)
         
-        # 分析実行
+        # Perform analysis
         analysis_result = self._analyze_label_correlations(data, dataset)
         
-        # 結果を保存
+        # Save results
         self.results[dataset_name] = analysis_result
         
-        # 可視化
+        # Visualize
         self._visualize_correlations(dataset_name, analysis_result, save_plots, output_dir)
+        
+        return analysis_result
+    
+    def analyze_gsl_adjacency(self, model, data, dataset, threshold=0.1, save_plots=True, output_dir='./'):
+        """
+        Analyze and visualize the GSL-generated adjacency matrix
+        
+        Args:
+            model: GSL model instance
+            data: PyTorch Geometric data object
+            dataset: Dataset object
+            threshold (float): Threshold for converting probabilities to binary edges
+            save_plots (bool): Whether to save plots
+            output_dir (str): Output directory
+        """
+        print(f"\n=== GSL Adjacency Matrix Analysis ===")
+        
+        # Get the learned adjacency matrix from GSL model
+        A_hat = model.get_learned_adjacency()
+        A_hat_np = A_hat.detach().cpu().numpy()
+        
+        # Convert to binary adjacency matrix using threshold
+        A_binary = (A_hat_np > threshold).astype(np.float32)
+        
+        # Remove self-loops
+        np.fill_diagonal(A_binary, 0)
+        
+        # Create edge_index from binary adjacency matrix
+        edge_indices = np.where(A_binary > 0)
+        edge_index = np.vstack([edge_indices[0], edge_indices[1]])
+        
+        # Create a temporary data object with the GSL-generated edges
+        temp_data = type('TempData', (), {})()
+        temp_data.edge_index = torch.tensor(edge_index, dtype=torch.long)
+        temp_data.y = data.y
+        temp_data.num_nodes = data.num_nodes
+        temp_data.train_mask = data.train_mask
+        temp_data.val_mask = data.val_mask
+        temp_data.test_mask = data.test_mask
+        
+        # Analyze the GSL-generated adjacency matrix
+        analysis_result = self._analyze_label_correlations(temp_data, dataset)
+        
+        # Add GSL-specific information
+        analysis_result['gsl_info'] = {
+            'original_adjacency': A_hat_np,
+            'binary_adjacency': A_binary,
+            'threshold': threshold,
+            'sparsity': 1.0 - (np.sum(A_binary) / (A_binary.shape[0] * A_binary.shape[1])),
+            'max_probability': np.max(A_hat_np),
+            'min_probability': np.min(A_hat_np),
+            'mean_probability': np.mean(A_hat_np)
+        }
+        
+        # Visualize the GSL adjacency matrix
+        self._visualize_gsl_adjacency(dataset.name, analysis_result, save_plots, output_dir)
         
         return analysis_result
     
     def _analyze_label_correlations(self, data, dataset):
         """
-        ラベル相関を分析
+        Analyze label correlations
         
         Args:
-            data: PyTorch Geometric データオブジェクト
-            dataset: データセットオブジェクト
+            data: PyTorch Geometric data object
+            dataset: Dataset object
             
         Returns:
-            dict: 分析結果
+            dict: Analysis results
         """
-        # エッジ情報を取得
+        # Get edge information
         edge_index = data.edge_index.cpu().numpy()
         labels = data.y.cpu().numpy()
         
-        # 隣接ノードのラベルペアを収集（無向グラフなので重複を除去）
+        # Collect label pairs of adjacent nodes (remove duplicates for undirected graphs)
         label_pairs = []
         unique_edges = set()
         
         for i in range(edge_index.shape[1]):
             src, dst = edge_index[:, i]
-            # 無向グラフの場合、同じエッジが2回格納されている可能性があるので重複を除去
+            # For undirected graphs, same edge might be stored twice, so remove duplicates
             edge_tuple = tuple(sorted([src, dst]))
             if edge_tuple not in unique_edges:
                 unique_edges.add(edge_tuple)
                 src_label = labels[src]
                 dst_label = labels[dst]
-                # 順序を統一（小さいラベルを先に）
+                # Standardize order (smaller label first)
                 if src_label <= dst_label:
                     label_pairs.append((src_label, dst_label))
                 else:
                     label_pairs.append((dst_label, src_label))
         
-        # ラベルペアの頻度を計算
+        # Calculate label pair frequencies
         pair_counts = Counter(label_pairs)
         
-        # 各ラベルの出現頻度を計算
+        # Calculate frequency of each label
         label_counts = Counter(labels)
         total_nodes = len(labels)
         
-        # 相関行列を作成（実際の頻度のみ）
+        # Create correlation matrix (actual frequencies only)
         correlation_matrix = np.zeros((dataset.num_classes, dataset.num_classes))
         
         for (label1, label2), actual_count in pair_counts.items():
             correlation_matrix[label1, label2] = actual_count
-            correlation_matrix[label2, label1] = actual_count  # 対称行列
+            correlation_matrix[label2, label1] = actual_count  # Symmetric matrix
         
-        # 統計情報を計算
+        # Calculate statistics
         total_edges_analyzed = len(label_pairs)
         unique_pairs = len(pair_counts)
         
-        # 最も頻繁なラベルペアを特定
+        # Identify most frequent label pairs
         most_frequent_pairs = sorted(
             [(pair, count) for pair, count in pair_counts.items()],
             key=lambda x: x[1], reverse=True
         )
         
-        # 最も稀なラベルペアを特定
+        # Identify least frequent label pairs
         least_frequent_pairs = sorted(
             [(pair, count) for pair, count in pair_counts.items()],
             key=lambda x: x[1]
@@ -125,7 +178,7 @@ class LabelCorrelationAnalyzer:
             'least_frequent_pairs': least_frequent_pairs[:5],
             'dataset_info': {
                 'num_nodes': data.num_nodes,
-                'num_edges': len(unique_edges),  # 重複を除去した実際のエッジ数
+                'num_edges': len(unique_edges),  # Actual edge count after removing duplicates
                 'num_classes': dataset.num_classes
             }
         }
@@ -230,29 +283,56 @@ LABEL DISTRIBUTION
         # 統計情報を表示
         self._print_statistics(dataset_name, analysis_result)
     
-    def _print_statistics(self, dataset_name, analysis_result):
+    def _visualize_gsl_adjacency(self, dataset_name, analysis_result, save_plots, output_dir):
         """
-        統計情報を表示
+        Visualize the GSL adjacency matrix analysis results
         
         Args:
-            dataset_name (str): データセット名
-            analysis_result (dict): 分析結果
+            dataset_name (str): Dataset name
+            analysis_result (dict): Analysis result
+            save_plots (bool): Whether to save plots
+            output_dir (str): Output directory
         """
-        print(f"\n=== {dataset_name} データセット情報 ===")
+        # Create subplots (2x2 layout)
+        fig, axes = plt.subplots(2, 2, figsize=(20, 16))
+        fig.suptitle(f'{dataset_name} Dataset: GSL Adjacency Matrix Analysis', fontsize=18, fontweight='bold')
         
+        # 1. Original adjacency matrix heatmap (top left)
+        A_hat = analysis_result['gsl_info']['original_adjacency']
+        sns.heatmap(A_hat, cmap='viridis', ax=axes[0, 0], cbar_kws={'shrink': 0.8})
+        axes[0, 0].set_title('GSL Learned Adjacency Matrix (Probabilities)', fontweight='bold', fontsize=14)
+        axes[0, 0].set_xlabel('Node Index', fontsize=12)
+        axes[0, 0].set_ylabel('Node Index', fontsize=12)
+        
+        # 2. Binary adjacency matrix heatmap (top right)
+        A_binary = analysis_result['gsl_info']['binary_adjacency']
+        sns.heatmap(A_binary, cmap='Blues', ax=axes[0, 1], cbar_kws={'shrink': 0.8})
+        axes[0, 1].set_title(f'Binary Adjacency Matrix (Threshold={analysis_result["gsl_info"]["threshold"]})', 
+                           fontweight='bold', fontsize=14)
+        axes[0, 1].set_xlabel('Node Index', fontsize=12)
+        axes[0, 1].set_ylabel('Node Index', fontsize=12)
+        
+        # 3. Label correlation matrix (bottom left)
+        correlation_matrix = analysis_result['correlation_matrix']
+        num_classes = correlation_matrix.shape[0]
+        
+        df_corr = pd.DataFrame(
+            correlation_matrix,
+            index=[f'Label {i}' for i in range(num_classes)],
+            columns=[f'Label {i}' for i in range(num_classes)]
+        )
+        
+        sns.heatmap(df_corr, annot=True, fmt='.0f', cmap='Blues', ax=axes[1, 0], 
+                   square=True, cbar_kws={'shrink': 0.8}, annot_kws={'size': 10})
+        axes[1, 0].set_title('GSL-Generated Edge Label Pair Frequency', fontweight='bold', fontsize=14)
+        axes[1, 0].set_xlabel('Label', fontsize=12)
+        axes[1, 0].set_ylabel('Label', fontsize=12)
+        
+        # 4. GSL statistics and information (bottom right)
+        gsl_info = analysis_result['gsl_info']
         dataset_info = analysis_result['dataset_info']
-        print(f"📊 基本統計:")
-        print(f"  ノード数: {dataset_info['num_nodes']:,}")
-        print(f"  エッジ数: {dataset_info['num_edges']:,}")
-        print(f"  クラス数: {dataset_info['num_classes']}")
-        print(f"  分析したエッジ数: {analysis_result['total_edges']:,}")
-        print(f"  ユニークなラベルペア数: {analysis_result['unique_pairs']}")
         
-        # グラフの密度を計算
-        density = (2 * dataset_info['num_edges']) / (dataset_info['num_nodes'] * (dataset_info['num_nodes'] - 1))
-        print(f"  グラフ密度: {density:.6f}")
-        
-        # Homophilyを計算
+        # Calculate homophily for GSL-generated edges
         total_edges = analysis_result['total_edges']
         same_label_edges = 0
         for (label1, label2), count in analysis_result['pair_counts'].items():
@@ -260,31 +340,106 @@ LABEL DISTRIBUTION
                 same_label_edges += count
         
         homophily = same_label_edges / total_edges if total_edges > 0 else 0
-        print(f"  同質性 (Homophily): {homophily:.4f}")
         
-        print(f"\n🏷️ ラベル分布:")
+        # Create information text
+        info_text = f"""GSL ADJACENCY MATRIX INFO
+{'='*40}
+Original Edges: {dataset_info['num_edges']:,}
+GSL Generated Edges: {analysis_result['total_edges']:,}
+Sparsity: {gsl_info['sparsity']:.4f}
+Threshold: {gsl_info['threshold']}
+
+PROBABILITY STATISTICS
+{'='*40}
+Max Probability: {gsl_info['max_probability']:.4f}
+Min Probability: {gsl_info['min_probability']:.4f}
+Mean Probability: {gsl_info['mean_probability']:.4f}
+
+GSL-GENERATED GRAPH PROPERTIES
+{'='*40}
+Nodes: {dataset_info['num_nodes']:,}
+Classes: {dataset_info['num_classes']}
+Density: {(2 * analysis_result['total_edges']) / (dataset_info['num_nodes'] * (dataset_info['num_nodes'] - 1)):.6f}
+Homophily: {homophily:.4f}"""
+        
+        axes[1, 1].text(0.05, 0.95, info_text, transform=axes[1, 1].transAxes, 
+                       fontsize=11, verticalalignment='top', fontfamily='monospace',
+                       bbox=dict(boxstyle='round,pad=0.8', facecolor='lightblue', 
+                                alpha=0.9, edgecolor='navy', linewidth=2))
+        axes[1, 1].set_title('GSL Analysis Details', fontweight='bold', fontsize=14)
+        axes[1, 1].axis('off')
+        
+        plt.tight_layout()
+        
+        if save_plots:
+            # Create gsl_adjacency_images folder
+            save_dir = os.path.join(output_dir, 'gsl_adjacency_images')
+            os.makedirs(save_dir, exist_ok=True)
+            
+            plt.savefig(f'{save_dir}/{dataset_name}_gsl_adjacency.png', 
+                       dpi=300, bbox_inches='tight')
+            print(f"GSL adjacency plot saved: {save_dir}/{dataset_name}_gsl_adjacency.png")
+        
+        plt.close()
+        
+        # Print GSL-specific statistics
+        self._print_gsl_statistics(dataset_name, analysis_result)
+    
+    def _print_statistics(self, dataset_name, analysis_result):
+        """
+        Print statistics
+        
+        Args:
+            dataset_name (str): Dataset name
+            analysis_result (dict): Analysis results
+        """
+        print(f"\n=== {dataset_name} Dataset Information ===")
+        
+        dataset_info = analysis_result['dataset_info']
+        print(f"📊 Basic Statistics:")
+        print(f"  Number of nodes: {dataset_info['num_nodes']:,}")
+        print(f"  Number of edges: {dataset_info['num_edges']:,}")
+        print(f"  Number of classes: {dataset_info['num_classes']}")
+        print(f"  Analyzed edges: {analysis_result['total_edges']:,}")
+        print(f"  Unique label pairs: {analysis_result['unique_pairs']}")
+        
+        # Calculate graph density
+        density = (2 * dataset_info['num_edges']) / (dataset_info['num_nodes'] * (dataset_info['num_nodes'] - 1))
+        print(f"  Graph density: {density:.6f}")
+        
+        # Calculate Homophily
+        total_edges = analysis_result['total_edges']
+        same_label_edges = 0
+        for (label1, label2), count in analysis_result['pair_counts'].items():
+            if label1 == label2:
+                same_label_edges += count
+        
+        homophily = same_label_edges / total_edges if total_edges > 0 else 0
+        print(f"  Homophily: {homophily:.4f}")
+        
+        print(f"\n🏷️ Label Distribution:")
         total_nodes = dataset_info['num_nodes']
         for label, count in sorted(analysis_result['label_counts'].items()):
             percentage = (count / total_nodes) * 100
-            print(f"  ラベル {label}: {count:,} ノード ({percentage:.1f}%)")
+            print(f"  Label {label}: {count:,} nodes ({percentage:.1f}%)")
         
-        # ラベル分布の統計
+        # Label distribution statistics
         label_counts_list = list(analysis_result['label_counts'].values())
-        print(f"\n📈 ラベル分布統計:")
-        print(f"  最大ラベルサイズ: {max(label_counts_list):,} ノード")
-        print(f"  最小ラベルサイズ: {min(label_counts_list):,} ノード")
-        print(f"  平均ラベルサイズ: {np.mean(label_counts_list):.1f} ノード")
-        print(f"  ラベルサイズの標準偏差: {np.std(label_counts_list):.1f}")
+        print(f"\n📈 Label Distribution Statistics:")
+        print(f"  Maximum label size: {max(label_counts_list):,} nodes")
+        print(f"  Minimum label size: {min(label_counts_list):,} nodes")
+        print(f"  Average label size: {np.mean(label_counts_list):.1f} nodes")
+        print(f"  Label size standard deviation: {np.std(label_counts_list):.1f}")
         
-        # クラス不均衡度を計算
+        # Calculate class imbalance ratio
         max_count = max(label_counts_list)
         min_count = min(label_counts_list)
         imbalance_ratio = max_count / min_count if min_count > 0 else float('inf')
-        print(f"  クラス不均衡比: {imbalance_ratio:.2f}")
+        print(f"  Class imbalance ratio: {imbalance_ratio:.2f}")
         
-        print(f"\n🔗 隣接ノード間ラベル相関:")
-        print(f"  最も頻繁なラベルペア:")
-        # 実際の頻度でソート
+        print(f"\n🔗 Adjacent Node Label Correlations:")
+        print(f"  Most frequent label pairs:")
+        # Sort by actual frequency
         sorted_pairs = sorted(
             analysis_result['pair_counts'].items(),
             key=lambda x: x[1],
@@ -293,20 +448,71 @@ LABEL DISTRIBUTION
         
         for i, (pair, count) in enumerate(sorted_pairs[:5]):
             percentage = (count / analysis_result['total_edges']) * 100
-            print(f"    {i+1}. ラベル {pair[0]} ↔ ラベル {pair[1]}: {count:,} エッジ ({percentage:.1f}%)")
+            print(f"    {i+1}. Label {pair[0]} ↔ Label {pair[1]}: {count:,} edges ({percentage:.1f}%)")
         
-        print(f"\n  最も稀なラベルペア:")
+        print(f"\n  Least frequent label pairs:")
         for i, (pair, count) in enumerate(sorted_pairs[-5:]):
             percentage = (count / analysis_result['total_edges']) * 100
-            print(f"    {i+1}. ラベル {pair[0]} ↔ ラベル {pair[1]}: {count:,} エッジ ({percentage:.1f}%)")
+            print(f"    {i+1}. Label {pair[0]} ↔ Label {pair[1]}: {count:,} edges ({percentage:.1f}%)")
     
-    def analyze_all_datasets(self, save_plots=True, output_dir='./'):
+    def _print_gsl_statistics(self, dataset_name, analysis_result):
         """
-        すべてのサポートされているデータセットを分析
+        Print GSL-specific statistics
         
         Args:
-            save_plots (bool): プロットを保存するかどうか
-            output_dir (str): 出力ディレクトリ
+            dataset_name (str): Dataset name
+            analysis_result (dict): Analysis result
+        """
+        print(f"\n=== {dataset_name} GSL Adjacency Matrix Statistics ===")
+        
+        gsl_info = analysis_result['gsl_info']
+        dataset_info = analysis_result['dataset_info']
+        
+        print(f"📊 GSL Matrix Properties:")
+        print(f"  Original edges: {dataset_info['num_edges']:,}")
+        print(f"  GSL generated edges: {analysis_result['total_edges']:,}")
+        print(f"  Sparsity: {gsl_info['sparsity']:.4f}")
+        print(f"  Threshold: {gsl_info['threshold']}")
+        
+        print(f"\n📈 Probability Statistics:")
+        print(f"  Max probability: {gsl_info['max_probability']:.4f}")
+        print(f"  Min probability: {gsl_info['min_probability']:.4f}")
+        print(f"  Mean probability: {gsl_info['mean_probability']:.4f}")
+        
+        # Calculate homophily
+        total_edges = analysis_result['total_edges']
+        same_label_edges = 0
+        for (label1, label2), count in analysis_result['pair_counts'].items():
+            if label1 == label2:
+                same_label_edges += count
+        
+        homophily = same_label_edges / total_edges if total_edges > 0 else 0
+        print(f"  Homophily: {homophily:.4f}")
+        
+        print(f"\n🔗 GSL-Generated Edge Label Pairs:")
+        sorted_pairs = sorted(
+            analysis_result['pair_counts'].items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+        
+        print(f"  Most frequent pairs:")
+        for i, (pair, count) in enumerate(sorted_pairs[:5]):
+            percentage = (count / analysis_result['total_edges']) * 100
+            print(f"    {i+1}. Label {pair[0]} ↔ Label {pair[1]}: {count:,} edges ({percentage:.1f}%)")
+        
+        print(f"\n  Least frequent pairs:")
+        for i, (pair, count) in enumerate(sorted_pairs[-5:]):
+            percentage = (count / analysis_result['total_edges']) * 100
+            print(f"    {i+1}. Label {pair[0]} ↔ Label {pair[1]}: {count:,} edges ({percentage:.1f}%)")
+
+    def analyze_all_datasets(self, save_plots=True, output_dir='./'):
+        """
+        Analyze all supported datasets
+        
+        Args:
+            save_plots (bool): Whether to save plots
+            output_dir (str): Output directory
         """
         supported_datasets = get_supported_datasets()
         all_dataset_names = []
@@ -314,50 +520,50 @@ LABEL DISTRIBUTION
         for category, datasets in supported_datasets.items():
             all_dataset_names.extend(datasets)
         
-        print(f"=== 全データセットのラベル相関分析 ===")
-        print(f"分析対象: {len(all_dataset_names)} データセット")
-        print(f"データセット: {', '.join(all_dataset_names)}")
+        print(f"=== All Datasets Label Correlation Analysis ===")
+        print(f"Target: {len(all_dataset_names)} datasets")
+        print(f"Datasets: {', '.join(all_dataset_names)}")
         
         for dataset_name in all_dataset_names:
             try:
                 self.analyze_dataset(dataset_name, save_plots, output_dir)
             except Exception as e:
-                print(f"エラー: {dataset_name} の分析中にエラーが発生しました: {e}")
+                print(f"Error: Error occurred while analyzing {dataset_name}: {e}")
                 continue
         
-        # 全データセットの比較
+        # Compare all datasets
         self._compare_all_datasets()
     
     def _compare_all_datasets(self):
         """
-        全データセットの結果を比較
+        Compare results from all datasets
         """
         if len(self.results) < 2:
-            print("比較するには少なくとも2つのデータセットの結果が必要です")
+            print("At least 2 dataset results are needed for comparison")
             return
         
-        print(f"\n=== 全データセット比較 ===")
+        print(f"\n=== All Datasets Comparison ===")
         
-        # 各データセットの統計情報を収集
+        # Collect statistics for each dataset
         dataset_comparison = []
         
         for dataset_name, result in self.results.items():
             dataset_info = result['dataset_info']
             label_counts_list = list(result['label_counts'].values())
             
-            # グラフ密度を計算
+            # Calculate graph density
             density = (2 * dataset_info['num_edges']) / (dataset_info['num_nodes'] * (dataset_info['num_nodes'] - 1))
             
-            # クラス不均衡度を計算
+            # Calculate class imbalance ratio
             max_count = max(label_counts_list)
             min_count = min(label_counts_list)
             imbalance_ratio = max_count / min_count if min_count > 0 else float('inf')
             
-            # ラベル分布の統計
+            # Label distribution statistics
             mean_label_size = np.mean(label_counts_list)
             std_label_size = np.std(label_counts_list)
             
-            # Homophilyを計算
+            # Calculate Homophily
             total_edges = result['total_edges']
             same_label_edges = 0
             for (label1, label2), count in result['pair_counts'].items():
@@ -378,39 +584,39 @@ LABEL DISTRIBUTION
                 'homophily': homophily
             })
         
-        # 結果を表示
-        print(f"{'データセット':<12} {'ノード数':<8} {'エッジ数':<8} {'クラス数':<6} {'密度':<8} {'不均衡比':<8} {'平均ラベル':<10} {'同質性':<8}")
+        # Display results
+        print(f"{'Dataset':<12} {'Nodes':<8} {'Edges':<8} {'Classes':<6} {'Density':<8} {'Imbalance':<8} {'Avg Label':<10} {'Homophily':<8}")
         print("-" * 70)
         
         for comp in sorted(dataset_comparison, key=lambda x: x['num_nodes'], reverse=True):
             print(f"{comp['dataset']:<12} {comp['num_nodes']:<8,} {comp['num_edges']:<8,} {comp['num_classes']:<6} "
                   f"{comp['density']:<8.6f} {comp['imbalance_ratio']:<8.2f} {comp['mean_label_size']:<10.1f} {comp['homophily']:.4f}")
         
-        print(f"\n📊 データセット特性の詳細:")
+        print(f"\n📊 Detailed Dataset Characteristics:")
         for comp in dataset_comparison:
             print(f"\n{comp['dataset']}:")
-            print(f"  ノード数: {comp['num_nodes']:,}")
-            print(f"  エッジ数: {comp['num_edges']:,}")
-            print(f"  クラス数: {comp['num_classes']}")
-            print(f"  グラフ密度: {comp['density']:.6f}")
-            print(f"  クラス不均衡比: {comp['imbalance_ratio']:.2f}")
-            print(f"  平均ラベルサイズ: {comp['mean_label_size']:.1f} ± {comp['std_label_size']:.1f}")
-            print(f"  同質性: {comp['homophily']:.4f}")
+            print(f"  Number of nodes: {comp['num_nodes']:,}")
+            print(f"  Number of edges: {comp['num_edges']:,}")
+            print(f"  Number of classes: {comp['num_classes']}")
+            print(f"  Graph density: {comp['density']:.6f}")
+            print(f"  Class imbalance ratio: {comp['imbalance_ratio']:.2f}")
+            print(f"  Average label size: {comp['mean_label_size']:.1f} ± {comp['std_label_size']:.1f}")
+            print(f"  Homophily: {comp['homophily']:.4f}")
 
 
 def main():
     """
-    メイン関数
+    Main function
     """
-    # アナライザーを初期化
+    # Initialize analyzer
     analyzer = LabelCorrelationAnalyzer()
     
-    # 分析対象のデータセットを指定
-    # 個別のデータセットを分析する場合
+    # Specify target datasets for analysis
+    # For individual dataset analysis
     # analyzer.analyze_dataset('Cora')
     # analyzer.analyze_dataset('Chameleon')
     
-    # 全データセットを分析する場合
+    # For all datasets analysis
     analyzer.analyze_all_datasets(save_plots=True, output_dir='./')
 
 

@@ -7,7 +7,7 @@ class GSLModel_LabelDistr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,
                  num_nodes, num_classes, label_embed_dim=16,
                  adj_init=None, model_type='mlp', num_layers=2, dropout=0.5,
-                 damping_alpha=0.3):
+                 damping_alpha=0.3, adj_init_strength=0.9):
         super().__init__()
 
         self.model_type = model_type
@@ -16,6 +16,7 @@ class GSLModel_LabelDistr(nn.Module):
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.damping_alpha = nn.Parameter(torch.tensor(damping_alpha, dtype=torch.float32))
+        self.adj_init_strength = adj_init_strength
 
         if model_type == 'mlp':
             self.classifier = nn.Sequential(
@@ -45,18 +46,24 @@ class GSLModel_LabelDistr(nn.Module):
 
         if adj_init is not None:
             assert adj_init.shape == (num_nodes, num_nodes)
-            adj_init = torch.clamp(adj_init, min=1e-6, max=1.0)
-            logits_init = torch.logit(adj_init, eps=1e-6)
+            # Convert binary adjacency matrix to reasonable probability values
+            # adj_init_strength controls how strongly we initialize based on original graph
+            # 0.9 means: 0->0.05, 1->0.95 (strong initialization)
+            # 0.5 means: 0->0.25, 1->0.75 (weak initialization)
+            adj_prob = adj_init * self.adj_init_strength + (1 - self.adj_init_strength) / 2
+            adj_prob = torch.clamp(adj_prob, min=1e-6, max=1.0-1e-6)
+            logits_init = torch.logit(adj_prob, eps=1e-6)
             self.adj_logits = nn.Parameter(logits_init.clone())
         else:
-            rand_logits = torch.randn(num_nodes, num_nodes)
+            # Initialize with smaller values for better sigmoid behavior
+            rand_logits = torch.randn(num_nodes, num_nodes) * 0.1  # Smaller scale
             self.adj_logits = nn.Parameter((rand_logits + rand_logits.T) / 2)
 
         self.label_embed = nn.Parameter(torch.randn(num_classes, label_embed_dim))
 
     def get_learned_adjacency(self):
         logits_sym = (self.adj_logits + self.adj_logits.T) / 2
-        return F.softmax(logits_sym, dim=1)
+        return torch.sigmoid(logits_sym)
 
     def get_edge_index_from_adjacency(self, A_hat, threshold=0.1):
         mask = A_hat > threshold
