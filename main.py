@@ -24,16 +24,16 @@ DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替�
 MODEL_NAME = 'GSL'  # ここを変更してモデルを切り替え
 
 # 実験設定
-NUM_RUNS = 20  # 実験回数
+NUM_RUNS = 50  # 実験回数
 NUM_EPOCHS = 400  # エポック数
 
 # データ分割設定
-TRAIN_RATIO = 0.6  # 訓練データの割合
-VAL_RATIO = 0.2    # 検証データの割合
-TEST_RATIO = 0.2   # テストデータの割合
+TRAIN_RATIO = 0.7  # 訓練データの割合
+VAL_RATIO = 0.01    # 検証データの割合
+TEST_RATIO = 0.3   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 3       # 最大hop数（1, 2, 3, ...）
+MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
 EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
 PCA_COMPONENTS = 100  # PCAで圧縮する次元数
 
@@ -47,10 +47,10 @@ CONCAT_HEADS = True   # アテンションヘッドの出力を結合するか�
 # GSLモデル固有のハイパーパラメータ
 LABEL_EMBED_DIM = 16  # ラベル埋め込み次元
 LAMBDA_SPARSE = 0.01  # スパース正則化の重み（正規化後なので小さく）
-LAMBDA_SMOOTH = 50.0   # ラベルスムース正則化の重み
-LAMBDA_FEAT_SMOOTH = 0  # 特徴量スムージング正則化の重み
-# GSLモデルの分類器タイプ（'mlp' または 'gcn'）
-GSL_MODEL_TYPE = 'mlp'  # ここを'mlp'または'gcn'に変更して切り替え
+LAMBDA_SMOOTH = 1.0   # ラベルスムース正則化の重み
+LAMBDA_FEAT_SMOOTH = 0.00  # 特徴量スムージング正則化の重み
+# GSLモデルの分類器タイプ（'mlp' または 'gcn' または 'linkx'）
+GSL_MODEL_TYPE = 'mlp'  # ここを'mlp'、'gcn'、または'linkx'に変更して切り替え
 
 # 最適化設定
 LEARNING_RATE = 0.01  # 学習率
@@ -172,6 +172,7 @@ for run in range(NUM_RUNS):
             'model_type': GSL_MODEL_TYPE,
             'num_layers': NUM_LAYERS,
             'dropout': DROPOUT,
+            'damping_alpha': 0.8,  # ラベル伝播の減衰係数
         })
     
     model = ModelFactory.create_model(**model_kwargs).to(device)

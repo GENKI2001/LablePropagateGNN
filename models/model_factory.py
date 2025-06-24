@@ -1,4 +1,5 @@
 import torch
+from torch_geometric.nn import LINKX
 from .gcn import GCN, GCNWithSkip
 from .gat import GAT, GATWithSkip, GATv2
 from .mlp import MLP, MLPWithSkip
@@ -115,6 +116,7 @@ class ModelFactory:
             model_type = kwargs.get('model_type', 'mlp')
             num_layers = kwargs.get('num_layers', 2)
             dropout = kwargs.get('dropout', 0.0)
+            damping_alpha = kwargs.get('damping_alpha', 0.8)
             
             return GSLModel_LabelDistr(
                 input_dim=in_channels,
@@ -126,7 +128,22 @@ class ModelFactory:
                 adj_init=default_params['adj_init'],
                 model_type=model_type,
                 num_layers=num_layers,
-                dropout=dropout
+                dropout=dropout,
+                damping_alpha=damping_alpha
+            )
+        
+        elif model_name == 'LINKX':
+            conv_type = kwargs.get('conv_type', 'gcn')
+            use_batch_norm = kwargs.get('use_batch_norm', True)
+            num_nodes = kwargs.get('num_nodes', None)
+            
+            return LINKX(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                num_layers=default_params['num_layers'],
+                dropout=default_params['dropout'],
+                num_nodes=num_nodes
             )
         
         else:
@@ -183,7 +200,12 @@ class ModelFactory:
                 'description': 'Graph Structure Learning Model (supports MLP and GCN classifiers)',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_nodes', 'label_embed_dim', 'adj_init', 'model_type', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
-            }
+            },
+            'LINKX': {
+                'description': 'LINKX model',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
+                'default_hidden_channels': 16
+            },
         }
         
         return model_info.get(model_name, {})
@@ -196,4 +218,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL'] 
+        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL', 'LINKX'] 
