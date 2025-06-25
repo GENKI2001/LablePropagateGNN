@@ -6,144 +6,6 @@ from sklearn.feature_extraction.text import CountVectorizer
 import random
 from collections import defaultdict
 
-def create_neighbor_lable_features(data, device, max_hops=2, exclude_test_labels=True):
-    """
-    適切なデータリーク対策を実装した特徴量作成関数（高速版）
-    
-    - 訓練データのラベルのみを使用してワンホットエンコーディングを作成
-    - exclude_test_labels=Trueの場合: テスト・検証ノードのラベルは隣接ノードの特徴量計算に使用しない
-    - exclude_test_labels=Falseの場合: テスト・検証ノードのラベルはunknownクラスとして扱う
-    
-    Args:
-        data: PyTorch Geometric データオブジェクト
-        device (torch.device): デバイス
-        max_hops (int): 最大hop数（デフォルト: 2）
-        exclude_test_labels (bool): テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか（デフォルト: True）
-    
-    Returns:
-        data: 特徴量が設定されたデータオブジェクト
-        adj_matrix: 隣接行列
-        one_hot_labels: ワンホットエンコーディングされたラベル
-    """
-    
-    # 訓練データのラベルのみを使用してワンホットエンコーディングを作成
-    train_labels = data.y[data.train_mask].cpu().numpy().reshape(-1, 1)
-    encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-    encoder.fit(train_labels)
-    
-    # 全ノードのラベルをワンホットエンコーディング
-    all_labels = data.y.cpu().numpy().reshape(-1, 1)
-    one_hot_labels = encoder.transform(all_labels)
-    
-    if exclude_test_labels:
-        # テスト・検証ノードのラベル情報を隣接ノードの特徴量計算から除外する場合
-        print("テスト・検証ノードのラベル情報を隣接ノードの特徴量計算から除外します")
-        print(f"テスト・検証ノード数: {(~data.train_mask).sum().item()}")
-        print(f"訓練ノード数: {data.train_mask.sum().item()}")
-        
-        # テスト・検証ノードのラベルを無効化（特徴量計算時に使用しない）
-        test_val_mask = ~data.train_mask
-        if test_val_mask.sum() > 0:
-            # テスト・検証ノードのワンホットエンコーディングをゼロベクトルに設定
-            one_hot_labels[test_val_mask] = 0
-    else:
-        # 従来の方法: テスト・検証ノードをunknownクラスとして明示的に設定
-        unknown_mask = ~data.train_mask
-        if unknown_mask.sum() > 0:
-            # unknownクラスのワンホットエンコーディングを作成
-            original_classes = one_hot_labels.shape[1]
-            unknown_encoding = np.zeros((one_hot_labels.shape[0], original_classes + 1))
-            
-            # 訓練データのノードは元のエンコーディングを保持
-            unknown_encoding[data.train_mask, :original_classes] = one_hot_labels[data.train_mask]
-            
-            # テスト・検証ノードはunknownクラスとして設定 [0,0,...,0,1]
-            unknown_encoding[unknown_mask, original_classes] = 1
-            
-            one_hot_labels = unknown_encoding
-            print(f"Unknownクラスを追加: {original_classes} → {original_classes + 1} クラス")
-            print(f"テスト・検証ノード数: {unknown_mask.sum().item()}")
-            print(f"訓練ノード数: {data.train_mask.sum().item()}")
-            
-        else:
-            # テスト・検証ノードがない場合は、unknownクラスを追加しない
-            print("テスト・検証ノードがないため、unknownクラスは追加しません")
-
-    # エッジリストから隣接関係を取得（高速化のため隣接行列は作成しない）
-    edge_index = data.edge_index.cpu()
-    num_nodes = data.num_nodes
-    
-    # 各ノードの隣接ノードリストを作成
-    neighbors_dict = {}
-    for i in range(num_nodes):
-        neighbors_dict[i] = []
-    
-    # エッジから隣接関係を構築
-    for i in range(edge_index.shape[1]):
-        src, dst = edge_index[0, i].item(), edge_index[1, i].item()
-        if src != dst:  # 自己ループを除外
-            neighbors_dict[src].append(dst)
-            neighbors_dict[dst].append(src)  # 無向グラフとして扱う
-
-    # 各hopの特徴量を格納するリスト
-    hop_features_list = []
-
-    # 各hopの特徴量を計算
-    for hop in range(1, max_hops + 1):
-        hop_features = torch.zeros((num_nodes, one_hot_labels.shape[1]), dtype=torch.float32)
-        
-        for i in range(num_nodes):
-            # n-hop隣接ノードを取得
-            if hop == 1:
-                # 1-hop: 直接隣接
-                neighbors = neighbors_dict[i]
-            else:
-                # 2-hop: 隣接ノードの隣接ノード（重複を除く）
-                neighbors = set()
-                for neighbor in neighbors_dict[i]:
-                    neighbors.update(neighbors_dict[neighbor])
-                # 1-hop隣接ノードを除外
-                neighbors = neighbors - set(neighbors_dict[i])
-                neighbors = list(neighbors)
-            
-            # 自分自身を除外
-            if i in neighbors:
-                neighbors.remove(i)
-            
-            if len(neighbors) > 0:
-                if exclude_test_labels:
-                    # テスト・検証ノードのラベル情報を除外する場合
-                    # 訓練ノードのみのラベル情報を使用
-                    train_neighbors = [n for n in neighbors if data.train_mask[n]]
-                    
-                    if len(train_neighbors) > 0:
-                        # 訓練ノードのワンホットエンコーディングを取得
-                        neighbor_one_hot = torch.tensor(one_hot_labels[train_neighbors], dtype=torch.float32)
-                        # 平均を計算
-                        hop_features[i] = neighbor_one_hot.mean(dim=0)
-                    else:
-                        # 訓練ノードの隣接ノードがない場合はゼロベクトル
-                        hop_features[i] = torch.zeros(one_hot_labels.shape[1], dtype=torch.float32)
-                else:
-                    # 従来の方法: 全ての隣接ノードのラベル情報を使用
-                    neighbor_one_hot = torch.tensor(one_hot_labels[neighbors], dtype=torch.float32)
-                    # 平均を計算
-                    hop_features[i] = neighbor_one_hot.mean(dim=0)
-        
-        hop_features_list.append(hop_features)
-
-    # 全てのhopの特徴量を結合
-    combined_features = torch.cat(hop_features_list, dim=1)
-
-    # 特徴量を設定
-    data.x = combined_features.to(device)
-    
-    # 隣接行列は後で必要に応じて作成
-    adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32)
-    adj_matrix[edge_index[0], edge_index[1]] = 1.0
-    
-    return data, adj_matrix, one_hot_labels
-
 def display_node_features(data, adj_matrix, one_hot_labels, dataset_name, max_hops=2, sample_nodes=None):
     """
     ノードの特徴量を表示する関数
@@ -218,9 +80,9 @@ def get_feature_info(data, one_hot_labels, max_hops=2):
         'hop_dims': [one_hot_labels.shape[1]] * max_hops
     }
 
-def create_combined_features_with_pca(data, device, max_hops=2, exclude_test_labels=True, 
-                                    pca_components=50, original_features=None):
+def create_pca_features(data, device, pca_components=50, original_features=None):
     """
+<<<<<<< HEAD
     PCAで次元圧縮した元の特徴量と隣接ノードのラベル特徴量を結合する関数
     
     Args:
@@ -330,6 +192,9 @@ def create_co_label_embeddings(data, device, embedding_dim=32, window_size=1, ma
     - 訓練データのラベルのみを使用して共起パターンを構築
     - 各ノードの隣接ノードのラベルシーケンスから共起特徴量を生成
     - 多hop対応（1-hop, 2-hop, ...）でより広範囲の共起パターンを学習
+=======
+    PCAで次元圧縮した特徴量を作成する関数（実験前に実行）
+>>>>>>> 3c0a64f3ac2f336559879e8599b3d689d84e14a1
     
     Args:
         data: PyTorch Geometric データオブジェクト
@@ -545,19 +410,25 @@ def create_combined_features_with_pca_and_co_label(data, device, max_hops=2, exc
         original_features (torch.Tensor, optional): 元の特徴量（Noneの場合はdata.xを使用）
     
     Returns:
+<<<<<<< HEAD
         data: 特徴量が設定されたデータオブジェクト
         adj_matrix: 隣接行列
         one_hot_labels: ワンホットエンコーディングされたラベル
+=======
+        data: PCA特徴量が設定されたデータオブジェクト
+>>>>>>> 3c0a64f3ac2f336559879e8599b3d689d84e14a1
         pca_features: PCA圧縮された特徴量
         co_label_features: 共起ラベルエンベディング特徴量
         label_cooccurrence_matrix: ラベル共起行列
     """
-    
-    # 元の特徴量を取得
     if original_features is None:
         original_features = data.x
+<<<<<<< HEAD
     
     print(f"=== 統合特徴量作成開始 ===")
+=======
+
+>>>>>>> 3c0a64f3ac2f336559879e8599b3d689d84e14a1
     print(f"元の特徴量の形状: {original_features.shape}")
     print(f"PCA圧縮後の次元数: {pca_components}")
     print(f"共起ラベルエンベディング次元: {co_label_embedding_dim}")
@@ -605,15 +476,15 @@ def create_combined_features_with_pca_and_co_label(data, device, max_hops=2, exc
             # テスト・検証ノードがない場合は、unknownクラスを追加しない
             print("テスト・検証ノードがないため、unknownクラスは追加しません")
     
-    # 訓練データのみを使用してPCAを学習
-    train_features = original_features[data.train_mask].cpu().numpy()
+    # 全ノードの特徴量を使用してPCAを学習（実験前なので全ノード使用可能）
+    all_features = original_features.cpu().numpy()
     
     # PCAを適用
-    pca = PCA(n_components=min(pca_components, train_features.shape[1], train_features.shape[0]))
-    pca.fit(train_features)
+    max_components = min(pca_components, all_features.shape[1])
+    pca = PCA(n_components=max_components)
+    pca.fit(all_features)
     
     # 全ノードの特徴量をPCAで圧縮
-    all_features = original_features.cpu().numpy()
     pca_features = pca.transform(all_features)
     
     print(f"PCA圧縮後の特徴量の形状: {pca_features.shape}")
@@ -624,6 +495,7 @@ def create_combined_features_with_pca_and_co_label(data, device, max_hops=2, exc
         data, device, max_hops, exclude_test_labels
     )
     
+<<<<<<< HEAD
     # 共起ラベルエンベディングを作成
     co_label_features, label_cooccurrence_matrix = create_co_label_embeddings(
         data, device, co_label_embedding_dim, co_label_window_size, co_label_max_hops, exclude_test_labels
@@ -721,3 +593,314 @@ display_co_label_embeddings_info(co_label_features, label_cooccurrence_matrix, "
 feature_info = get_feature_info(data, one_hot_labels, max_hops=2)
 print(f"特徴量情報: {feature_info}")
 """
+=======
+    return data, pca_features, pca
+
+def create_label_features(data, device, max_hops=2, exclude_test_labels=True, use_neighbor_label_features=True):
+    """
+    隣接ノードのラベル特徴量を作成する関数（実験中に実行）
+    
+    Args:
+        data: PyTorch Geometric データオブジェクト
+        device (torch.device): デバイス
+        max_hops (int): 最大hop数（デフォルト: 2）
+        exclude_test_labels (bool): テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか（デフォルト: True）
+        use_neighbor_label_features (bool): Trueなら隣接ノードのラベル特徴量を結合、Falseなら結合しない
+    
+    Returns:
+        data: 特徴量が設定されたデータオブジェクト
+        adj_matrix: 隣接行列
+        one_hot_labels: ワンホットエンコーディングされたラベル
+    """
+    print(f"現在の特徴量の形状: {data.x.shape}")
+    
+    # ワンホットエンコーディングの作成
+    train_labels = data.y[data.train_mask].cpu().numpy().reshape(-1, 1)
+    encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+    encoder.fit(train_labels)
+    all_labels = data.y.cpu().numpy().reshape(-1, 1)
+    one_hot_labels = encoder.transform(all_labels)
+    
+    if exclude_test_labels:
+        test_val_mask = ~data.train_mask
+        if test_val_mask.sum() > 0:
+            one_hot_labels[test_val_mask] = 0
+    else:
+        unknown_mask = ~data.train_mask
+        if unknown_mask.sum() > 0:
+            original_classes = one_hot_labels.shape[1]
+            unknown_encoding = np.zeros((one_hot_labels.shape[0], original_classes + 1))
+            unknown_encoding[data.train_mask, :original_classes] = one_hot_labels[data.train_mask]
+            unknown_encoding[unknown_mask, original_classes] = 1
+            one_hot_labels = unknown_encoding
+            print(f"Unknownクラスを追加: {original_classes} → {original_classes + 1} クラス")
+            print(f"テスト・検証ノード数: {unknown_mask.sum().item()}")
+            print(f"訓練ノード数: {data.train_mask.sum().item()}")
+        else:
+            print("テスト・検証ノードがないため、unknownクラスは追加しません")
+    
+    # 隣接ノード特徴量の処理
+    if use_neighbor_label_features:
+        print("隣接ノードのラベル特徴量を結合します")
+        
+        # 隣接ノード特徴量を作成
+        edge_index = data.edge_index.cpu()
+        num_nodes = data.num_nodes
+        
+        # 各ノードの隣接ノードリストを作成
+        neighbors_dict = {}
+        for i in range(num_nodes):
+            neighbors_dict[i] = []
+        
+        # エッジから隣接関係を構築
+        for i in range(edge_index.shape[1]):
+            src, dst = edge_index[0, i].item(), edge_index[1, i].item()
+            if src != dst:  # 自己ループを除外
+                neighbors_dict[src].append(dst)
+                neighbors_dict[dst].append(src)  # 無向グラフとして扱う
+
+        # 各hopの特徴量を格納するリスト
+        hop_features_list = []
+
+        # 各hopの特徴量を計算
+        for hop in range(1, max_hops + 1):
+            hop_features = torch.zeros((num_nodes, one_hot_labels.shape[1]), dtype=torch.float32)
+            
+            for i in range(num_nodes):
+                # n-hop隣接ノードを取得
+                if hop == 1:
+                    # 1-hop: 直接隣接
+                    neighbors = neighbors_dict[i]
+                else:
+                    # 2-hop: 隣接ノードの隣接ノード（重複を除く）
+                    neighbors = set()
+                    for neighbor in neighbors_dict[i]:
+                        neighbors.update(neighbors_dict[neighbor])
+                    # 1-hop隣接ノードを除外
+                    neighbors = neighbors - set(neighbors_dict[i])
+                    neighbors = list(neighbors)
+                
+                # 自分自身を除外
+                if i in neighbors:
+                    neighbors.remove(i)
+                
+                if len(neighbors) > 0:
+                    if exclude_test_labels:
+                        # テスト・検証ノードのラベル情報を除外する場合
+                        # 訓練ノードのみのラベル情報を使用
+                        train_neighbors = [n for n in neighbors if data.train_mask[n]]
+                        
+                        if len(train_neighbors) > 0:
+                            # 訓練ノードのワンホットエンコーディングを取得
+                            neighbor_one_hot = torch.tensor(one_hot_labels[train_neighbors], dtype=torch.float32)
+                            # 平均を計算
+                            hop_features[i] = neighbor_one_hot.mean(dim=0)
+                        else:
+                            # 訓練ノードの隣接ノードがない場合はゼロベクトル
+                            hop_features[i] = torch.zeros(one_hot_labels.shape[1], dtype=torch.float32)
+                    else:
+                        # 従来の方法: 全ての隣接ノードのラベル情報を使用
+                        neighbor_one_hot = torch.tensor(one_hot_labels[neighbors], dtype=torch.float32)
+                        # 平均を計算
+                        hop_features[i] = neighbor_one_hot.mean(dim=0)
+            
+            hop_features_list.append(hop_features)
+
+        # 全てのhopの特徴量を結合
+        neighbor_features = torch.cat(hop_features_list, dim=1)
+        
+        # 隣接行列を作成
+        adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32)
+        adj_matrix[edge_index[0], edge_index[1]] = 1.0
+        
+        # 現在の特徴量（PCA済み）と隣接ノード特徴量を結合
+        combined_features = torch.cat([data.x, neighbor_features], dim=1)
+        print(f"結合後の特徴量の形状: {combined_features.shape}")
+        print(f"  - 現在の特徴量: {data.x.shape[1]}次元")
+        print(f"  - 隣接ノード特徴量: {neighbor_features.shape[1]}次元")
+    else:
+        print("隣接ノードのラベル特徴量は結合しません")
+        # 隣接行列のみ作成（GSLモデルで必要）
+        edge_index = data.edge_index.cpu()
+        num_nodes = data.num_nodes
+        adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32)
+        adj_matrix[edge_index[0], edge_index[1]] = 1.0
+        combined_features = data.x
+        print(f"最終特徴量の形状: {combined_features.shape}")
+        print(f"  - 現在の特徴量: {data.x.shape[1]}次元")
+    
+    data.x = combined_features.to(device)
+    return data, adj_matrix, one_hot_labels
+
+def create_combined_features(data, device, max_hops=2, exclude_test_labels=True, 
+                            pca_components=50, use_pca=True, use_neighbor_label_features=True, original_features=None):
+    """
+    PCAで次元圧縮した元の特徴量または生の特徴量と隣接ノードのラベル特徴量を結合する関数（後方互換性のため残す）
+    
+    Args:
+        data: PyTorch Geometric データオブジェクト
+        device (torch.device): デバイス
+        max_hops (int): 最大hop数（デフォルト: 2）
+        exclude_test_labels (bool): テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか（デフォルト: True）
+        pca_components (int): PCAで圧縮する次元数（デフォルト: 50）
+        use_pca (bool): TrueならPCA圧縮、Falseなら生の特徴量を使用
+        use_neighbor_label_features (bool): Trueなら隣接ノードのラベル特徴量を結合、Falseなら結合しない
+        original_features (torch.Tensor, optional): 元の特徴量（Noneの場合はdata.xを使用）
+    
+    Returns:
+        data: 特徴量が設定されたデータオブジェクト
+        adj_matrix: 隣接行列
+        one_hot_labels: ワンホットエンコーディングされたラベル
+        pca_features: PCA圧縮された特徴量またはNone
+    """
+    if original_features is None:
+        original_features = data.x
+
+    print(f"元の特徴量の形状: {original_features.shape}")
+    
+    # ワンホットエンコーディングの作成（隣接ノード特徴量を使う場合のみ必要）
+    if use_neighbor_label_features:
+        train_labels = data.y[data.train_mask].cpu().numpy().reshape(-1, 1)
+        encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+        encoder.fit(train_labels)
+        all_labels = data.y.cpu().numpy().reshape(-1, 1)
+        one_hot_labels = encoder.transform(all_labels)
+        
+        if exclude_test_labels:
+            test_val_mask = ~data.train_mask
+            if test_val_mask.sum() > 0:
+                one_hot_labels[test_val_mask] = 0
+        else:
+            unknown_mask = ~data.train_mask
+            if unknown_mask.sum() > 0:
+                original_classes = one_hot_labels.shape[1]
+                unknown_encoding = np.zeros((one_hot_labels.shape[0], original_classes + 1))
+                unknown_encoding[data.train_mask, :original_classes] = one_hot_labels[data.train_mask]
+                unknown_encoding[unknown_mask, original_classes] = 1
+                one_hot_labels = unknown_encoding
+                print(f"Unknownクラスを追加: {original_classes} → {original_classes + 1} クラス")
+                print(f"テスト・検証ノード数: {unknown_mask.sum().item()}")
+                print(f"訓練ノード数: {data.train_mask.sum().item()}")
+            else:
+                print("テスト・検証ノードがないため、unknownクラスは追加しません")
+    else:
+        # 隣接ノード特徴量を使わない場合は、最小限のワンホットエンコーディングを作成
+        train_labels = data.y[data.train_mask].cpu().numpy().reshape(-1, 1)
+        encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+        encoder.fit(train_labels)
+        all_labels = data.y.cpu().numpy().reshape(-1, 1)
+        one_hot_labels = encoder.transform(all_labels)
+    
+    # 元の特徴量の処理
+    if use_pca:
+        print(f"PCA圧縮後の次元数: {pca_components}")
+        train_features = original_features[data.train_mask].cpu().numpy()
+        max_components = min(pca_components, train_features.shape[1])
+        if train_features.shape[0] < max_components:
+            print(f"警告: 訓練ノード数({train_features.shape[0]})が要求次元数({max_components})より少ないため、")
+            print(f"元の特徴量次元({train_features.shape[1]})まで使用可能にします")
+            max_components = min(pca_components, train_features.shape[1])
+        pca = PCA(n_components=max_components)
+        pca.fit(train_features)
+        all_features = original_features.cpu().numpy()
+        pca_features = pca.transform(all_features)
+        print(f"PCA圧縮後の特徴量の形状: {pca_features.shape}")
+        print(f"説明分散比: {pca.explained_variance_ratio_.sum():.4f}")
+        pca_tensor = torch.tensor(pca_features, dtype=torch.float32)
+    else:
+        print("PCAを使わず生の特徴量を結合します")
+        pca_tensor = original_features.cpu().float()
+        pca_features = None
+    
+    # 隣接ノード特徴量の処理
+    if use_neighbor_label_features:
+        print("隣接ノードのラベル特徴量を結合します")
+        
+        # 隣接ノード特徴量を作成
+        edge_index = data.edge_index.cpu()
+        num_nodes = data.num_nodes
+        
+        # 各ノードの隣接ノードリストを作成
+        neighbors_dict = {}
+        for i in range(num_nodes):
+            neighbors_dict[i] = []
+        
+        # エッジから隣接関係を構築
+        for i in range(edge_index.shape[1]):
+            src, dst = edge_index[0, i].item(), edge_index[1, i].item()
+            if src != dst:  # 自己ループを除外
+                neighbors_dict[src].append(dst)
+                neighbors_dict[dst].append(src)  # 無向グラフとして扱う
+
+        # 各hopの特徴量を格納するリスト
+        hop_features_list = []
+
+        # 各hopの特徴量を計算
+        for hop in range(1, max_hops + 1):
+            hop_features = torch.zeros((num_nodes, one_hot_labels.shape[1]), dtype=torch.float32)
+            
+            for i in range(num_nodes):
+                # n-hop隣接ノードを取得
+                if hop == 1:
+                    # 1-hop: 直接隣接
+                    neighbors = neighbors_dict[i]
+                else:
+                    # 2-hop: 隣接ノードの隣接ノード（重複を除く）
+                    neighbors = set()
+                    for neighbor in neighbors_dict[i]:
+                        neighbors.update(neighbors_dict[neighbor])
+                    # 1-hop隣接ノードを除外
+                    neighbors = neighbors - set(neighbors_dict[i])
+                    neighbors = list(neighbors)
+                
+                # 自分自身を除外
+                if i in neighbors:
+                    neighbors.remove(i)
+                
+                if len(neighbors) > 0:
+                    if exclude_test_labels:
+                        # テスト・検証ノードのラベル情報を除外する場合
+                        # 訓練ノードのみのラベル情報を使用
+                        train_neighbors = [n for n in neighbors if data.train_mask[n]]
+                        
+                        if len(train_neighbors) > 0:
+                            # 訓練ノードのワンホットエンコーディングを取得
+                            neighbor_one_hot = torch.tensor(one_hot_labels[train_neighbors], dtype=torch.float32)
+                            # 平均を計算
+                            hop_features[i] = neighbor_one_hot.mean(dim=0)
+                        else:
+                            # 訓練ノードの隣接ノードがない場合はゼロベクトル
+                            hop_features[i] = torch.zeros(one_hot_labels.shape[1], dtype=torch.float32)
+                    else:
+                        # 従来の方法: 全ての隣接ノードのラベル情報を使用
+                        neighbor_one_hot = torch.tensor(one_hot_labels[neighbors], dtype=torch.float32)
+                        # 平均を計算
+                        hop_features[i] = neighbor_one_hot.mean(dim=0)
+            
+            hop_features_list.append(hop_features)
+
+        # 全てのhopの特徴量を結合
+        neighbor_features = torch.cat(hop_features_list, dim=1)
+        
+        # 隣接行列を作成
+        adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32)
+        adj_matrix[edge_index[0], edge_index[1]] = 1.0
+        
+        combined_features = torch.cat([pca_tensor, neighbor_features], dim=1)
+        print(f"結合後の特徴量の形状: {combined_features.shape}")
+        print(f"  - {'PCA' if use_pca else '生'}特徴量: {pca_tensor.shape[1]}次元")
+        print(f"  - 隣接ノード特徴量: {neighbor_features.shape[1]}次元")
+    else:
+        print("隣接ノードのラベル特徴量は結合しません")
+        # 隣接行列のみ作成（GSLモデルで必要）
+        edge_index = data.edge_index.cpu()
+        num_nodes = data.num_nodes
+        adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32)
+        adj_matrix[edge_index[0], edge_index[1]] = 1.0
+        combined_features = pca_tensor
+        print(f"最終特徴量の形状: {combined_features.shape}")
+        print(f"  - {'PCA' if use_pca else '生'}特徴量: {pca_tensor.shape[1]}次元")
+    
+    data.x = combined_features.to(device)
+    return data, adj_matrix, one_hot_labels, pca_features 
+>>>>>>> 3c0a64f3ac2f336559879e8599b3d689d84e14a1

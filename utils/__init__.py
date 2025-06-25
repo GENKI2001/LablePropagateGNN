@@ -1,7 +1,6 @@
 # Utils package for GSLCodes project
 
 from .feature_creator import (
-    create_neighbor_lable_features,
     display_node_features,
     get_feature_info
 )
