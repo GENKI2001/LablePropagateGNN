@@ -1,7 +1,9 @@
 import torch
+from torch_geometric.nn import LINKX
 from .gcn import GCN, GCNWithSkip
 from .gat import GAT, GATWithSkip, GATv2
 from .mlp import MLP, MLPWithSkip
+from .gsl_labeldist import GSLModel_LabelDistr
 
 class ModelFactory:
     """
@@ -15,7 +17,7 @@ class ModelFactory:
         モデルを作成する
         
         Args:
-            model_name (str): モデル名 ('GCN', 'GAT', 'GATv2', etc.)
+            model_name (str): モデル名 ('GCN', 'GAT', 'GATv2', 'GSL', etc.)
             in_channels (int): 入力特徴量の次元
             hidden_channels (int): 隠れ層の次元
             out_channels (int): 出力特徴量の次元
@@ -30,7 +32,10 @@ class ModelFactory:
             'num_layers': 2,
             'dropout': 0.0,
             'num_heads': 8,
-            'concat': True
+            'concat': True,
+            'num_nodes': None,
+            'label_embed_dim': 16,
+            'adj_init': None
         }
         
         # キーワード引数でデフォルトパラメータを更新
@@ -103,6 +108,44 @@ class ModelFactory:
                 dropout=default_params['dropout']
             )
         
+        elif model_name == 'GSL':
+            if default_params['num_nodes'] is None:
+                raise ValueError("GSL model requires 'num_nodes' parameter")
+            
+            # GSLモデルの追加パラメータ
+            model_type = kwargs.get('model_type', 'mlp')
+            num_layers = kwargs.get('num_layers', 2)
+            dropout = kwargs.get('dropout', 0.0)
+            damping_alpha = kwargs.get('damping_alpha', 0.8)
+            
+            return GSLModel_LabelDistr(
+                input_dim=in_channels,
+                hidden_dim=hidden_channels,
+                output_dim=out_channels,
+                num_nodes=default_params['num_nodes'],
+                num_classes=out_channels,
+                label_embed_dim=default_params['label_embed_dim'],
+                adj_init=default_params['adj_init'],
+                model_type=model_type,
+                num_layers=num_layers,
+                dropout=dropout,
+                damping_alpha=damping_alpha
+            )
+        
+        elif model_name == 'LINKX':
+            conv_type = kwargs.get('conv_type', 'gcn')
+            use_batch_norm = kwargs.get('use_batch_norm', True)
+            num_nodes = kwargs.get('num_nodes', None)
+            
+            return LINKX(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                num_layers=default_params['num_layers'],
+                dropout=default_params['dropout'],
+                num_nodes=num_nodes
+            )
+        
         else:
             raise ValueError(f"Unsupported model: {model_name}")
     
@@ -152,7 +195,17 @@ class ModelFactory:
                 'description': '1-layer MLP with Skip Connections',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
                 'default_hidden_channels': 16
-            }
+            },
+            'GSL': {
+                'description': 'Graph Structure Learning Model (supports MLP and GCN classifiers)',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_nodes', 'label_embed_dim', 'adj_init', 'model_type', 'num_layers', 'dropout'],
+                'default_hidden_channels': 16
+            },
+            'LINKX': {
+                'description': 'LINKX model',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
+                'default_hidden_channels': 16
+            },
         }
         
         return model_info.get(model_name, {})
@@ -165,4 +218,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip'] 
+        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL', 'LINKX'] 
