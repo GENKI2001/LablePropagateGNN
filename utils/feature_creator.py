@@ -177,13 +177,29 @@ def create_label_features(data, device, max_hops=2, exclude_test_labels=True, us
         A = A.bool()
         A.fill_diagonal_(False)
 
-        prev_mask = A.clone()
+        # 各hopまでの到達可能性を追跡
+        reachable_nodes = torch.zeros((num_nodes, num_nodes), dtype=torch.bool)
+        
         for hop in range(1, max_hops + 1):
-            mask = prev_mask
+            if hop == 1:
+                # 1hop: 直接隣接ノードのみ
+                mask = A.clone()
+                reachable_nodes = mask.clone()
+            else:
+                # 2hop以上: 前のhopまでの到達可能性を除外
+                # 現在のhopで到達可能なノードを計算
+                current_reachable = torch.matmul(reachable_nodes.float(), A.float()).bool()
+                # 前のhopまでの到達可能性を除外
+                mask = current_reachable & (~reachable_nodes)
+                # 到達可能性を更新
+                reachable_nodes = reachable_nodes | current_reachable
+            
+            # 各ノードについて、そのhopで到達可能な隣接ノードのラベルを集約
             neighbor_labels = mask.float() @ one_hot_labels_tensor
             hop_features = F.softmax(neighbor_labels / temperature, dim=1)
             hop_features_list.append(hop_features)
-            prev_mask = torch.matmul(mask.float(), A.float()).bool()
+            
+            print(f"  {hop}hop: {mask.sum().item()}個の接続（前のhopを除外）")
 
         neighbor_label_features = torch.cat(hop_features_list, dim=1)
         combined_features = torch.cat([data.x, neighbor_label_features], dim=1)

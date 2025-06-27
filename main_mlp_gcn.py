@@ -16,7 +16,7 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Pubmed'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # モデル選択（MLPまたはGCN）
 # サポートされているモデル:
@@ -25,8 +25,8 @@ DATASET_NAME = 'Pubmed'  # ここを変更してデータセットを切り替�
 MODEL_NAME = 'MLP'  # ここを変更してモデルを切り替え ('MLP' または 'GCN')
 
 # 実験設定
-NUM_RUNS = 10  # 実験回数
-NUM_EPOCHS = 200  # エポック数
+NUM_RUNS = 100  # 実験回数
+NUM_EPOCHS = 400  # エポック数
 
 # データ分割設定
 TRAIN_RATIO = 0.6  # 訓練データの割合

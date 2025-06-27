@@ -98,6 +98,7 @@ class ModelFactory:
                 in_channels=in_channels,
                 hidden_channels=hidden_channels,
                 out_channels=out_channels,
+                num_layers=default_params['num_layers'],
                 dropout=default_params['dropout']
             )
         
@@ -106,6 +107,7 @@ class ModelFactory:
                 in_channels=in_channels,
                 hidden_channels=hidden_channels,
                 out_channels=out_channels,
+                num_layers=default_params['num_layers'],
                 dropout=default_params['dropout']
             )
         
@@ -215,13 +217,13 @@ class ModelFactory:
                 'default_hidden_channels': 8
             },
             'MLP': {
-                'description': '1-layer Multi-Layer Perceptron (ignores graph structure)',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
+                'description': 'Multi-Layer Perceptron (ignores graph structure)',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
             },
             'MLPWithSkip': {
-                'description': '1-layer MLP with Skip Connections',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
+                'description': 'Multi-Layer Perceptron with Skip Connections',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
             },
             'GSL': {
