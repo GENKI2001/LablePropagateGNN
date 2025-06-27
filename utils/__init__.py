@@ -26,6 +26,12 @@ from .edge_enhancer import (
     analyze_similarity_distribution
 )
 
+from .edge_sampler import (
+    EdgeSampler,
+    sample_edges,
+    print_sampling_statistics
+)
+
 __all__ = [
     # feature_creator
     'create_neighbor_lable_features',
@@ -47,5 +53,10 @@ __all__ = [
     # edge_enhancer
     'EdgeEnhancer',
     'enhance_edges_by_similarity',
-    'analyze_similarity_distribution'
+    'analyze_similarity_distribution',
+    
+    # edge_sampler
+    'EdgeSampler',
+    'sample_edges',
+    'print_sampling_statistics'
 ] 
