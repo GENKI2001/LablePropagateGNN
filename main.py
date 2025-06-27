@@ -22,7 +22,7 @@ from utils.label_correlation_analyzer import LabelCorrelationAnalyzer
 DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # モデル選択
-# サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL', 'TriFeatureGSLGNN'
+# サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL', 'TriFeatureGSLGNN', 'GCNAndMLPConcat'
 MODEL_NAME = 'MLP'  # ここを変更してモデルを切り替え
 
 # 実験設定

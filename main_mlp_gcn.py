@@ -68,7 +68,7 @@ SIMILARITY_EDGE_MODE = 'replace'  # 'replace': 元のエッジを置き換え, '
 SIMILARITY_THRESHOLD = 0.999  # コサイン類似度の閾値 (0.0-1.0)
 SIMILARITY_EDGE_WEIGHT = 1.0  # 類似度ベースエッジの重み
 SIMILARITY_FEATURE_TYPE = 'both'  # 'raw': 生の特徴量のみ, 'label': ラベル分布特徴量のみ, 'both': 両方
-SIMILARITY_RAW_THRESHOLD = 0.8  # 生の特徴量の類似度閾値 (0.0-1.0)
+SIMILARITY_RAW_THRESHOLD = 0.9  # 生の特徴量の類似度閾値 (0.0-1.0)
 SIMILARITY_LABEL_THRESHOLD = 0.999  # ラベル分布特徴量の類似度閾値 (0.0-1.0)
 
 # モデルハイパーパラメータ

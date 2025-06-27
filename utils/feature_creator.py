@@ -404,12 +404,12 @@ def compute_extended_structural_features(data, device,
 
     return data, structural_features
 
-def create_similarity_based_edges(neighbor_label_features, threshold=0.5, device='cpu'):
+def create_similarity_based_edges(features, threshold=0.5, device='cpu'):
     """
-    neighbor_label_featuresのコサイン類似度に基づいて新しいエッジを作成する関数
+    特徴量のコサイン類似度に基づいて新しいエッジを作成する関数
     
     Args:
-        neighbor_label_features (torch.Tensor): 隣接ノードのラベル特徴量 [num_nodes, feature_dim]
+        features (torch.Tensor): ノード特徴量 [num_nodes, feature_dim]（生の特徴量またはラベル分布特徴量など）
         threshold (float): コサイン類似度の閾値（0.0-1.0）
         device (str): 使用デバイス
     
@@ -419,13 +419,13 @@ def create_similarity_based_edges(neighbor_label_features, threshold=0.5, device
         int: 作成されたエッジ数
     """
     print(f"\n=== 類似度ベースエッジ作成 ===")
-    print(f"特徴量形状: {neighbor_label_features.shape}")
+    print(f"特徴量形状: {features.shape}")
     print(f"類似度閾値: {threshold}")
     
-    num_nodes = neighbor_label_features.shape[0]
+    num_nodes = features.shape[0]
     
     # 特徴量を正規化（コサイン類似度計算のため）
-    features_normalized = F.normalize(neighbor_label_features, p=2, dim=1)
+    features_normalized = F.normalize(features, p=2, dim=1)
     
     # 全ノード間のコサイン類似度を計算
     similarity_matrix = torch.mm(features_normalized, features_normalized.t())
@@ -486,16 +486,16 @@ def create_similarity_based_edges(neighbor_label_features, threshold=0.5, device
     return new_edge_index, new_adj_matrix, num_new_edges
 
 
-def create_similarity_based_edges_with_original(original_edge_index, neighbor_label_features, 
+def create_similarity_based_edges_with_original(original_edge_index, features, 
                                               threshold=0.5, device='cpu', 
                                               combine_with_original=True):
     """
-    neighbor_label_featuresのコサイン類似度に基づいて新しいエッジを作成し、
+    特徴量のコサイン類似度に基づいて新しいエッジを作成し、
     元のエッジと結合する関数
     
     Args:
         original_edge_index (torch.Tensor): 元のエッジインデックス [2, num_edges]
-        neighbor_label_features (torch.Tensor): 隣接ノードのラベル特徴量 [num_nodes, feature_dim]
+        features (torch.Tensor): ノード特徴量 [num_nodes, feature_dim]（生の特徴量またはラベル分布特徴量など）
         threshold (float): コサイン類似度の閾値（0.0-1.0）
         device (str): 使用デバイス
         combine_with_original (bool): 元のエッジと結合するかどうか
@@ -509,15 +509,15 @@ def create_similarity_based_edges_with_original(original_edge_index, neighbor_la
     """
     print(f"\n=== 類似度ベースエッジ作成（元エッジ結合） ===")
     print(f"元のエッジ数: {original_edge_index.shape[1]}")
-    print(f"特徴量形状: {neighbor_label_features.shape}")
+    print(f"特徴量形状: {features.shape}")
     print(f"類似度閾値: {threshold}")
     print(f"元エッジと結合: {combine_with_original}")
     
-    num_nodes = neighbor_label_features.shape[0]
+    num_nodes = features.shape[0]
     
     # 新しいエッジを作成
     new_edge_index, new_adj_matrix, num_new_edges = create_similarity_based_edges(
-        neighbor_label_features, threshold, device
+        features, threshold, device
     )
     
     if combine_with_original:
