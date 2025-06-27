@@ -6,6 +6,7 @@ from .mlp import MLP, MLPWithSkip
 from .dual_mlp import DualMLPFusion
 from .gsl_labeldist import GSLModel_LabelDistr
 from .trigsl import TriFeatureGSLGNN
+from .mlp_and_gcn import MLPAndGCNFusion, MLPAndGCNSerial, MLPAndGCNEnsemble, GCNAndMLPConcat
 
 class ModelFactory:
     """
@@ -191,6 +192,58 @@ class ModelFactory:
                 combined_dim=combined_dim
             )
         
+        # MLP-GCNハイブリッドモデル
+        elif model_name == 'MLPAndGCNFusion':
+            fusion_method = kwargs.get('fusion_method', 'concat')
+            return MLPAndGCNFusion(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                num_layers=default_params['num_layers'],
+                dropout=default_params['dropout'],
+                fusion_method=fusion_method
+            )
+        
+        elif model_name == 'MLPAndGCNSerial':
+            gcn_layers = kwargs.get('gcn_layers', 2)
+            mlp_layers = kwargs.get('mlp_layers', 1)
+            return MLPAndGCNSerial(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                gcn_layers=gcn_layers,
+                mlp_layers=mlp_layers,
+                dropout=default_params['dropout']
+            )
+        
+        elif model_name == 'MLPAndGCNEnsemble':
+            ensemble_method = kwargs.get('ensemble_method', 'weighted')
+            return MLPAndGCNEnsemble(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                num_layers=default_params['num_layers'],
+                dropout=default_params['dropout'],
+                ensemble_method=ensemble_method
+            )
+        
+        elif model_name == 'GCNAndMLPConcat':
+            # GCNAndMLPConcatの場合は、xfeat_dimとxlabel_dimを別々に指定する必要がある
+            xfeat_dim = kwargs.get('xfeat_dim', in_channels)
+            xlabel_dim = kwargs.get('xlabel_dim', 0)
+            gcn_hidden_dim = kwargs.get('gcn_hidden_dim', None)
+            mlp_hidden_dim = kwargs.get('mlp_hidden_dim', None)
+            
+            return GCNAndMLPConcat(
+                xfeat_dim=xfeat_dim,
+                xlabel_dim=xlabel_dim,
+                hidden_dim=hidden_channels,
+                out_dim=out_channels,
+                dropout=default_params['dropout'],
+                gcn_hidden_dim=gcn_hidden_dim,
+                mlp_hidden_dim=mlp_hidden_dim
+            )
+        
         else:
             raise ValueError(f"Unsupported model: {model_name}")
     
@@ -261,6 +314,26 @@ class ModelFactory:
                 'parameters': ['input_dim', 'hidden_dim', 'output_dim', 'num_nodes', 'num_classes', 'label_embed_dim', 'adj_init', 'model_type', 'num_layers', 'dropout', 'damping_alpha', 'adj_init_strength'],
                 'default_hidden_channels': 16
             },
+            'MLPAndGCNFusion': {
+                'description': 'MLP-GCN Fusion Model',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'fusion_method'],
+                'default_hidden_channels': 16
+            },
+            'MLPAndGCNSerial': {
+                'description': 'MLP-GCN Serial Model',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'gcn_layers', 'mlp_layers', 'dropout'],
+                'default_hidden_channels': 16
+            },
+            'MLPAndGCNEnsemble': {
+                'description': 'MLP-GCN Ensemble Model',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'ensemble_method'],
+                'default_hidden_channels': 16
+            },
+            'GCNAndMLPConcat': {
+                'description': 'GCN-MLP Concat Model (GCN for raw features, MLP for raw+label features)',
+                'parameters': ['xfeat_dim', 'xlabel_dim', 'hidden_channels', 'out_channels', 'dropout', 'gcn_hidden_dim', 'mlp_hidden_dim'],
+                'default_hidden_channels': 16
+            },
         }
         
         return model_info.get(model_name, {})
@@ -273,4 +346,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'DualMLPFusion', 'GSL', 'LINKX', 'TriFeatureGSLGNN'] 
+        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'DualMLPFusion', 'GSL', 'LINKX', 'TriFeatureGSLGNN', 'MLPAndGCNFusion', 'MLPAndGCNSerial', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat'] 
