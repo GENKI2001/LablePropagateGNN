@@ -2,9 +2,10 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
-from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info
+from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info, compute_extended_structural_features
 from models import ModelFactory
-from models.gsl_labeldist import compute_loss
+from models.gsl_labeldist import compute_loss as gsl_compute_loss
+from models.trigsl import compute_loss_with_tri_smooth as trigsl_compute_loss
 from utils.label_correlation_analyzer import LabelCorrelationAnalyzer
 
 # ============================================================================
@@ -21,24 +22,30 @@ from utils.label_correlation_analyzer import LabelCorrelationAnalyzer
 DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # モデル選択
-# サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL'
-MODEL_NAME = 'GSL'  # ここを変更してモデルを切り替え
+# サポートされているモデル: 'GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL', 'TriFeatureGSLGNN'
+MODEL_NAME = 'MLP'  # ここを変更してモデルを切り替え
 
 # 実験設定
-NUM_RUNS = 1  # 実験回数
-NUM_EPOCHS = 1000  # エポック数
+NUM_RUNS = 50  # 実験回数
+NUM_EPOCHS = 400  # エポック数
 
 # データ分割設定
-TRAIN_RATIO = 0.7  # 訓練データの割合
-VAL_RATIO = 0.1    # 検証データの割合
+TRAIN_RATIO = 0.6  # 訓練データの割合
+VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
 MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
 EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
 PCA_COMPONENTS = 128  # PCAで圧縮する次元数
-USE_PCA = True  # True: PCA圧縮, False: 生の特徴量
+USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
 USE_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を結合, False: 結合しない
+USE_STRUCTURAL_FEATURES = False  # True: 構造的特徴量を結合, False: 結合しない
+
+# エッジ追加設定
+USE_EDGE_ENHANCEMENT = False  # True: エッジ追加, False: エッジ追加しない
+EDGE_SIMILARITY_METHOD = 'cosine'  # 類似度計算方法: 'cosine', 'euclidean', 'manhattan'
+EDGE_SIMILARITY_THRESHOLD = 0.8  # 類似度閾値（この値以上の類似度を持つノード間にエッジを追加）
 
 # モデルハイパーパラメータ
 HIDDEN_CHANNELS = 16  # 隠れ層の次元（GCN系）/ 8（GAT系）
@@ -49,18 +56,19 @@ CONCAT_HEADS = True   # アテンションヘッドの出力を結合するか�
 
 # GSLモデル固有のハイパーパラメータ
 LABEL_EMBED_DIM = 16  # ラベル埋め込み次元
-LAMBDA_SPARSE = 0  # スパース正則化の重み
-LAMBDA_SMOOTH = 1.0   # ラベルスムース正則化の重み
-LAMBDA_FEAT_SMOOTH = 0.00  # 特徴量スムージング正則化の重み
+LAMBDA_SPARSE = 0.3  # スパース正則化の重み
+LAMBDA_SMOOTH = 0.1   # ラベルスムース正則化の重み
+LAMBDA_FEAT_SMOOTH = 0.1  # 特徴量スムージング正則化の重み
+LAMBDA_STRUCT_SMOOTH = 0.1  # 構造的特徴量スムージング正則化の重み（TriFeatureGSLGNN用）
 # GSLモデルの分類器タイプ（'mlp' または 'gcn' または 'linkx'）
 GSL_MODEL_TYPE = 'mlp'  # ここを'mlp'、'gcn'、または'linkx'に変更して切り替え
 # GSL隣接行列初期化の強度（0.0-1.0、大きいほど元のグラフ構造を強く反映）
 GSL_ADJ_INIT_STRENGTH = 0.8  # 0.8: 0->0.1, 1->0.9 の確率で初期化
 
 # GSL隣接行列分析設定
-ANALYZE_GSL_ADJACENCY = True  # GSL隣接行列を分析するかどうか
+ANALYZE_GSL_ADJACENCY = False  # GSL隣接行列を分析するかどうか
 GSL_ADJACENCY_THRESHOLD = 0.1  # 確率を01に変換するための閾値
-SAVE_GSL_PLOTS = True  # GSL分析結果のプロットを保存するかどうか
+SAVE_GSL_PLOTS = False  # GSL分析結果のプロットを保存するかどうか
 
 # 最適化設定
 LEARNING_RATE = 0.01  # 学習率
@@ -89,6 +97,66 @@ else:
     print(f"\n=== PCA処理をスキップ ===")
     print(f"生の特徴量を使用します: {data.x.shape}")
 
+# 構造的特徴量を追加
+if USE_STRUCTURAL_FEATURES:
+    print(f"\n=== 構造的特徴量追加 ===")
+    
+    # 構造的特徴量の設定を明記
+    structural_config = {
+        'degree': True,
+        'clustering': True,
+        'triangle': True,
+        'depth': False,
+        'avg_neighbor_degree': True,
+        'pagerank': True,
+        'eigenvector': True,
+        'kcore': True,
+        'l2_stats': True
+    }
+    
+    print("追加する構造的特徴量:")
+    for feature_name, is_included in structural_config.items():
+        status = "✓" if is_included else "✗"
+        print(f"  {status} {feature_name}")
+    
+    data, structural_features = compute_extended_structural_features(
+        data, device,
+        include_degree=structural_config['degree'],
+        include_clustering=structural_config['clustering'],
+        include_triangle=structural_config['triangle'],
+        include_depth=structural_config['depth'],
+        include_avg_neighbor_degree=structural_config['avg_neighbor_degree'],
+        include_pagerank=structural_config['pagerank'],
+        include_eigenvector=structural_config['eigenvector'],
+        include_kcore=structural_config['kcore'],
+        include_l2_stats=structural_config['l2_stats']
+    )
+    
+    print(f"構造的特徴量追加後の特徴量形状: {data.x.shape}")
+    print(f"構造的特徴量の次元数: {structural_features.shape[1]}")
+    
+    # 各特徴量の説明を表示
+    feature_descriptions = {
+        'degree': 'ノードの次数（接続数）',
+        'clustering': 'クラスタ係数（近傍内の三角形形成割合）',
+        'triangle': '三角形数（局所密度の指標）',
+        'depth': 'BFS深さ（ノード0からの距離）',
+        'avg_neighbor_degree': '隣接ノードの平均次数',
+        'pagerank': 'PageRankスコア（グローバル重要度）',
+        'eigenvector': '固有ベクトル中心性（影響力）',
+        'kcore': 'k-core番号（中核性の指標）',
+        'l2_stats': 'L2統計量（特徴量の正規化統計）'
+    }
+    
+    print("\n構造的特徴量の詳細:")
+    for feature_name, is_included in structural_config.items():
+        if is_included:
+            print(f"  • {feature_name}: {feature_descriptions[feature_name]}")
+    
+else:
+    print(f"\n=== 構造的特徴量追加をスキップ ===")
+    structural_features = None
+
 # モデル情報を取得
 model_info = ModelFactory.get_model_info(MODEL_NAME)
 default_hidden_channels = model_info.get('default_hidden_channels', HIDDEN_CHANNELS)
@@ -108,6 +176,9 @@ print(f"テストラベル除外: {EXCLUDE_TEST_LABELS}")
 print(f"PCA圧縮次元数: {PCA_COMPONENTS}")
 print(f"PCA使用: {USE_PCA}")
 print(f"隣接ノード特徴量使用: {USE_NEIGHBOR_LABEL_FEATURES}")
+print(f"構造的特徴量使用: {USE_STRUCTURAL_FEATURES}")
+if USE_STRUCTURAL_FEATURES:
+    print(f"構造的特徴量次元数: {structural_features.shape[1]}")
 print(f"隠れ層次元: {default_hidden_channels}")
 print(f"レイヤー数: {NUM_LAYERS}")
 print(f"ドロップアウト: {DROPOUT}")
@@ -163,13 +234,16 @@ for run in range(NUM_RUNS):
     print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
     
     # 実験中にラベル特徴量を作成
-    run_data, adj_matrix, one_hot_labels = create_label_features(
+    run_data, adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
         run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS, 
         use_neighbor_label_features=USE_NEIGHBOR_LABEL_FEATURES
     )
 
     # 特徴量情報を取得
     feature_info = get_feature_info(run_data, one_hot_labels, max_hops=MAX_HOPS)
+    
+    # エッジ追加情報を初期化
+    feature_edge_info = None
     
     # 特徴量の詳細表示（オプション）
     if SHOW_FEATURE_DETAILS:
@@ -193,11 +267,21 @@ for run in range(NUM_RUNS):
         })
     
     # GSLモデルの場合は追加パラメータを設定
-    if MODEL_NAME == 'GSL':
-        # PCA特徴量 + 隣接ノード特徴量 + ラベル分布（MAX_HOPS分）の次元を計算
-        combined_input_dim = feature_info['feature_dim'] + MAX_HOPS * dataset.num_classes
+    if MODEL_NAME == 'GSL' or MODEL_NAME == 'TriFeatureGSLGNN':
+        if MODEL_NAME == 'GSL':
+            # GSLモデル: PCA特徴量 + 隣接ノード特徴量 + ラベル分布（MAX_HOPS分）の次元を計算
+            combined_input_dim = feature_info['feature_dim'] + MAX_HOPS * dataset.num_classes
+        else:  # TriFeatureGSLGNN
+            # TriFeatureGSLGNNモデル: PCA特徴量のみを入力として使用（構造特徴量とラベル分布は別途渡す）
+            combined_input_dim = feature_info['feature_dim']
+            
+            # 構造特徴量の次元を計算
+            struct_dim = structural_features.shape[1] if structural_features is not None else 1
+            label_dist_dim = MAX_HOPS * dataset.num_classes
+            combined_dim = combined_input_dim + struct_dim + label_dist_dim
+        
         model_kwargs.update({
-            'in_channels': combined_input_dim,  # (PCA + 隣接ノード特徴量) + MAX_HOPS*ラベル分布の次元
+            'in_channels': combined_input_dim,
             'num_nodes': num_nodes,
             'label_embed_dim': LABEL_EMBED_DIM,
             'adj_init': adj_matrix if adj_matrix is not None else None,
@@ -206,13 +290,17 @@ for run in range(NUM_RUNS):
             'dropout': DROPOUT,
             'adj_init_strength': GSL_ADJ_INIT_STRENGTH,
         })
+        
+        # TriFeatureGSLGNNの場合は結合次元も追加
+        if MODEL_NAME == 'TriFeatureGSLGNN':
+            model_kwargs['combined_dim'] = combined_dim
     
     model = ModelFactory.create_model(**model_kwargs).to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     
     # GSLモデル用のB行列を作成（同じラベルを持つノード間のみ1）
-    if MODEL_NAME == 'GSL':
+    if MODEL_NAME == 'GSL' or MODEL_NAME == 'TriFeatureGSLGNN':
         B = torch.zeros(num_nodes, num_nodes, device=device)
         # trainデータのみを使用してB行列を作成
         train_indices = torch.where(run_data.train_mask)[0]
@@ -228,11 +316,36 @@ for run in range(NUM_RUNS):
         
         if MODEL_NAME == 'GSL':
             # GSLモデルの場合は独自の損失関数を使用
-            total_loss, loss_dict = compute_loss(
+            total_loss, loss_dict = gsl_compute_loss(
                 model, run_data.x, one_hot_labels, run_data.train_mask, B,
                 lambda_sparse=LAMBDA_SPARSE, lambda_smooth=LAMBDA_SMOOTH, 
                 lambda_feat_smooth=LAMBDA_FEAT_SMOOTH, max_hops=MAX_HOPS
             )
+            total_loss.backward()
+            optimizer.step()
+            return total_loss.item(), loss_dict
+        elif MODEL_NAME == 'TriFeatureGSLGNN':
+            # TriFeatureGSLGNNモデルの場合は独自の損失関数を使用
+            if structural_features is not None:
+                total_loss, loss_dict = trigsl_compute_loss(
+                    model, run_data.x, structural_features, one_hot_labels, run_data.train_mask, B,
+                    lambda_sparse=LAMBDA_SPARSE, 
+                    lambda_label_smooth=LAMBDA_SMOOTH, 
+                    lambda_feat_smooth=LAMBDA_FEAT_SMOOTH,
+                    lambda_struct_smooth=LAMBDA_STRUCT_SMOOTH,  # 構造的特徴量スムージングの重み
+                    max_hops=MAX_HOPS
+                )
+            else:
+                # 構造的特徴量がない場合はゼロテンソルを作成して通常の損失関数を使用
+                zero_struct = torch.zeros(run_data.x.shape[0], 1, device=device)
+                total_loss, loss_dict = trigsl_compute_loss(
+                    model, run_data.x, zero_struct, one_hot_labels, run_data.train_mask, B,
+                    lambda_sparse=LAMBDA_SPARSE, 
+                    lambda_label_smooth=LAMBDA_SMOOTH, 
+                    lambda_feat_smooth=LAMBDA_FEAT_SMOOTH,
+                    lambda_struct_smooth=LAMBDA_STRUCT_SMOOTH,
+                    max_hops=MAX_HOPS
+                )
             total_loss.backward()
             optimizer.step()
             return total_loss.item(), loss_dict
@@ -251,6 +364,14 @@ for run in range(NUM_RUNS):
         if MODEL_NAME == 'GSL':
             # GSLモデルの場合は結合された特徴量とone-hotラベルを使用
             out = model(run_data.x, one_hot_labels, max_hops=MAX_HOPS)
+        elif MODEL_NAME == 'TriFeatureGSLGNN':
+            # TriFeatureGSLGNNモデルの場合は3種類の特徴量を別々に渡す
+            if structural_features is not None:
+                out = model(run_data.x, structural_features, one_hot_labels, max_hops=MAX_HOPS)
+            else:
+                # 構造的特徴量がない場合はゼロテンソルを作成
+                zero_struct = torch.zeros(run_data.x.shape[0], 1, device=device)
+                out = model(run_data.x, zero_struct, one_hot_labels, max_hops=MAX_HOPS)
         else:
             out = model(run_data.x, run_data.edge_index)
         pred = out.argmax(dim=1)
@@ -288,6 +409,11 @@ for run in range(NUM_RUNS):
                 print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, CE: {loss_dict.get("ce_loss", 0):.4f}, '
                       f'Sparse: {loss_dict.get("sparse_loss", 0):.4f}, Smooth: {loss_dict.get("smooth_loss", 0):.4f}, '
                       f'FeatSmooth: {loss_dict.get("feat_smooth_loss", 0):.4f}, '
+                      f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
+            elif MODEL_NAME == 'TriFeatureGSLGNN':
+                print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, CE: {loss_dict.get("ce_loss", 0):.4f}, '
+                      f'Sparse: {loss_dict.get("sparse_loss", 0):.4f}, LabelSmooth: {loss_dict.get("label_smooth_loss", 0):.4f}, '
+                      f'FeatSmooth: {loss_dict.get("feat_smooth_loss", 0):.4f}, StructSmooth: {loss_dict.get("struct_smooth_loss", 0):.4f}, '
                       f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
             else:
                 print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
@@ -354,6 +480,18 @@ for run in range(NUM_RUNS):
     if USE_EDGE_ENHANCEMENT:
         run_result['feature_edge_info'] = feature_edge_info
     
+    # TriFeatureGSLGNNモデルの重み情報を表示
+    if MODEL_NAME == 'TriFeatureGSLGNN':
+        model_weights = model.get_model_weights()
+        feature_weights = model.get_feature_weights()
+        print(f"  学習された重み:")
+        print(f"    モデル重み - MLP: {model_weights['mlp_weight']:.4f}, GCN: {model_weights['gcn_weight']:.4f}")
+        print(f"    特徴量重み - PCA: {feature_weights['pca_weight']:.4f}, Struct: {feature_weights['struct_weight']:.4f}, Label: {feature_weights['label_weight']:.4f}")
+        
+        # 結果に重み情報も保存
+        run_result['model_weights'] = model_weights
+        run_result['feature_weights'] = feature_weights
+    
     all_results.append(run_result)
     
     print(f"実験 {run + 1} 完了:")
@@ -393,17 +531,44 @@ for i, result in enumerate(all_results):
 print(f"\n=== 実験完了 ===")
 print(f"データセット: {DATASET_NAME}")
 print(f"モデル: {MODEL_NAME}")
-print(f"共起ラベルエンベディング: {USE_CO_LABEL_EMBEDDING}")
-if USE_CO_LABEL_EMBEDDING:
-    print(f"  エンベディング次元: {CO_LABEL_EMBEDDING_DIM}")
-    print(f"  ウィンドウサイズ: {CO_LABEL_WINDOW_SIZE}")
-    print(f"  最大hop数: {CO_LABEL_MAX_HOPS}")
+print(f"構造的特徴量使用: {USE_STRUCTURAL_FEATURES}")
 print(f"エッジ追加: {USE_EDGE_ENHANCEMENT}")
 if USE_EDGE_ENHANCEMENT:
     print(f"  類似度計算方法: {EDGE_SIMILARITY_METHOD}")
     print(f"  類似度閾値: {EDGE_SIMILARITY_THRESHOLD}")
 print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
 print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
+
+# TriFeatureGSLGNNモデルの重み統計を表示
+if MODEL_NAME == 'TriFeatureGSLGNN':
+    print(f"\n=== TriFeatureGSLGNN 重み統計 ===")
+    
+    # モデル重みの統計
+    mlp_weights = [r.get('model_weights', {}).get('mlp_weight', 0) for r in all_results]
+    gcn_weights = [r.get('model_weights', {}).get('gcn_weight', 0) for r in all_results]
+    
+    print(f"モデル重み平均:")
+    print(f"  MLP: {np.mean(mlp_weights):.4f} ± {np.std(mlp_weights):.4f}")
+    print(f"  GCN: {np.mean(gcn_weights):.4f} ± {np.std(gcn_weights):.4f}")
+    
+    # 特徴量重みの統計
+    pca_weights = [r.get('feature_weights', {}).get('pca_weight', 0) for r in all_results]
+    struct_weights = [r.get('feature_weights', {}).get('struct_weight', 0) for r in all_results]
+    label_weights = [r.get('feature_weights', {}).get('label_weight', 0) for r in all_results]
+    
+    print(f"特徴量重み平均:")
+    print(f"  PCA: {np.mean(pca_weights):.4f} ± {np.std(pca_weights):.4f}")
+    print(f"  Struct: {np.mean(struct_weights):.4f} ± {np.std(struct_weights):.4f}")
+    print(f"  Label: {np.mean(label_weights):.4f} ± {np.std(label_weights):.4f}")
+    
+    # 詳細な重み表示
+    print(f"\n詳細な重み情報:")
+    for i, result in enumerate(all_results):
+        if 'model_weights' in result:
+            mw = result['model_weights']
+            fw = result['feature_weights']
+            print(f"  実験 {i+1:2d}: MLP={mw['mlp_weight']:.4f}, GCN={mw['gcn_weight']:.4f} | "
+                  f"PCA={fw['pca_weight']:.4f}, Struct={fw['struct_weight']:.4f}, Label={fw['label_weight']:.4f}")
 
 # GSL隣接行列分析の結果サマリー
 if MODEL_NAME == 'GSL' and ANALYZE_GSL_ADJACENCY:
