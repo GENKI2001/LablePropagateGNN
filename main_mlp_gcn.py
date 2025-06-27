@@ -17,17 +17,18 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Chameleon'  # ここを変更してデータセットを切り替え
 
 # モデル選択（MLPまたはGCN）
 # サポートされているモデル:
 # - 'MLP': 1-layer Multi-Layer Perceptron (グラフ構造を無視)
 # - 'GCN': Graph Convolutional Network (グラフ構造を活用)
-MODEL_NAME = 'GCN'  # ここを変更してモデルを切り替え ('MLP' または 'GCN')
+# - 'DualMLPFusion': Dual MLP Fusion Model (生の特徴量とラベル分布特徴量を別々のMLPで処理)
+MODEL_NAME = 'DualMLPFusion'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'DualMLPFusion')
 
 # 実験設定
 NUM_RUNS = 10  # 実験回数
-NUM_EPOCHS = 400  # エポック数
+NUM_EPOCHS = 200  # エポック数
 
 # データ分割設定
 TRAIN_RATIO = 0.6  # 訓練データの割合
@@ -35,7 +36,7 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
+MAX_HOPS = 3       # 最大hop数（1, 2, 3, ...）
 EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
 PCA_COMPONENTS = 128  # PCAで圧縮する次元数
@@ -58,7 +59,7 @@ EDGE_SAMPLING_ALPHA = 0.5  # 適応的サンプリングの重みパラメータ
 
 # 類似度ベースエッジ作成設定
 USE_SIMILARITY_BASED_EDGES = True  # True: 類似度ベースエッジ作成を実行, False: スキップ
-SIMILARITY_EDGE_MODE = 'add'  # 'replace': 元のエッジを置き換え, 'add': 元のエッジに追加
+SIMILARITY_EDGE_MODE = 'replace'  # 'replace': 元のエッジを置き換え, 'add': 元のエッジに追加
 SIMILARITY_THRESHOLD = 0.99  # コサイン類似度の閾値 (0.0-1.0)
 SIMILARITY_EDGE_WEIGHT = 1.0  # 類似度ベースエッジの重み
 
@@ -141,6 +142,8 @@ print(f"\n=== 実験設定 ===")
 print(f"データセット: {DATASET_NAME}")
 print(f"モデル: {MODEL_NAME}")
 print(f"説明: {model_info.get('description', 'N/A')}")
+if MODEL_NAME == 'DualMLPFusion':
+    print(f"DualMLPFusion設定: 生の特徴量とラベル分布特徴量を別々のMLPで処理")
 print(f"ノード数: {data.num_nodes}")
 print(f"エッジ数: {data.edge_index.shape[1]}")
 print(f"クラス数: {dataset.num_classes}")
@@ -251,8 +254,23 @@ for run in range(NUM_RUNS):
     # 隣接ノードのラベル特徴量を結合
     if USE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
         print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
-        run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
-        print(f"  結合後の特徴量形状: {run_data.x.shape}")
+        
+        # DualMLPFusionの場合は、生の特徴量とラベル分布特徴量を分離して保存
+        if MODEL_NAME == 'DualMLPFusion':
+            # 元の特徴量（生の特徴量）を保存
+            raw_features = run_data.x.clone()
+            label_dist_features = neighbor_label_features
+            
+            # 結合してDualMLPFusionに渡す
+            run_data.x = torch.cat([raw_features, label_dist_features], dim=1)
+            print(f"  DualMLPFusion用に特徴量を分離・結合:")
+            print(f"    生の特徴量: {raw_features.shape}")
+            print(f"    ラベル分布特徴量: {label_dist_features.shape}")
+            print(f"    結合後: {run_data.x.shape}")
+        else:
+            # 通常の結合
+            run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
+            print(f"  結合後の特徴量形状: {run_data.x.shape}")
 
     # 順序付きランダムウォーク特徴量を作成
     if USE_POSITIONAL_RANDOM_WALK:
@@ -300,6 +318,27 @@ for run in range(NUM_RUNS):
         'dropout': DROPOUT
     }
     
+    # DualMLPFusionの場合は、生の特徴量とラベル分布特徴量の次元を指定
+    if MODEL_NAME == 'DualMLPFusion' and USE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
+        # 元の特徴量次元（PCA処理前の生の特徴量）
+        if USE_PCA:
+            raw_feature_dim = PCA_COMPONENTS
+        else:
+            raw_feature_dim = dataset.num_features
+        
+        # ラベル分布特徴量の次元
+        label_dist_dim = neighbor_label_features.shape[1]
+        
+        model_kwargs.update({
+            'in_dim1': raw_feature_dim,  # 生の特徴量の次元
+            'in_dim2': label_dist_dim    # ラベル分布特徴量の次元
+        })
+        
+        print(f"  DualMLPFusionモデル作成:")
+        print(f"    生の特徴量次元: {raw_feature_dim}")
+        print(f"    ラベル分布特徴量次元: {label_dist_dim}")
+        print(f"    総特徴量次元: {actual_feature_dim}")
+    
     model = ModelFactory.create_model(**model_kwargs).to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -328,6 +367,12 @@ for run in range(NUM_RUNS):
             accs.append(int(correct.sum()) / int(mask.sum()))
         return accs
     
+    # DualMLPFusionモデルのα値を取得する関数
+    def get_alpha_value():
+        if MODEL_NAME == 'DualMLPFusion' and hasattr(model, 'get_alpha'):
+            return model.get_alpha()
+        return None
+    
     # 学習実行
     best_val_acc = 0
     best_test_acc = 0
@@ -352,7 +397,20 @@ for run in range(NUM_RUNS):
         
         # 進捗表示
         if epoch % DISPLAY_PROGRESS_EVERY == 0:
-            print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}')
+            alpha_info = ""
+            if MODEL_NAME == 'DualMLPFusion':
+                alpha_val = get_alpha_value()
+                if alpha_val is not None:
+                    alpha_info = f", α={alpha_val:.4f}"
+            
+            print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}')
+    
+    # DualMLPFusionモデルの最終α値を表示
+    if MODEL_NAME == 'DualMLPFusion':
+        final_alpha = get_alpha_value()
+        if final_alpha is not None:
+            print(f"\n=== DualMLPFusion 最終α値 ===")
+            model.print_alpha_info()
     
     # 結果を保存
     run_result = {
@@ -363,6 +421,14 @@ for run in range(NUM_RUNS):
         'best_val_acc': best_val_acc,
         'best_test_acc': best_test_acc
     }
+    
+    # DualMLPFusionの場合はα値も保存
+    if MODEL_NAME == 'DualMLPFusion':
+        final_alpha = get_alpha_value()
+        if final_alpha is not None:
+            run_result['final_alpha'] = final_alpha
+            alpha_info = model.get_alpha_info()
+            run_result['alpha_info'] = alpha_info
     
     all_results.append(run_result)
     
@@ -395,13 +461,33 @@ print(f"\nベスト結果:")
 print(f"  Val:   {np.mean(best_val_accs):.4f} ± {np.std(best_val_accs):.4f}")
 print(f"  Test:  {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
 
+# DualMLPFusionモデルのα値統計
+if MODEL_NAME == 'DualMLPFusion' and 'final_alpha' in all_results[0]:
+    final_alphas = [r['final_alpha'] for r in all_results]
+    print(f"\nDualMLPFusion α値統計:")
+    print(f"  最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}")
+    print(f"  α値範囲: [{min(final_alphas):.4f}, {max(final_alphas):.4f}]")
+    
+    # 特徴量の重み統計
+    feature1_weights = [r['alpha_info']['feature1_weight'] for r in all_results]
+    feature2_weights = [r['alpha_info']['feature2_weight'] for r in all_results]
+    print(f"  生の特徴量重み: {np.mean(feature1_weights):.4f} ± {np.std(feature1_weights):.4f}")
+    print(f"  ラベル分布特徴量重み: {np.mean(feature2_weights):.4f} ± {np.std(feature2_weights):.4f}")
+
 # 詳細な結果表示
 print(f"\n=== 詳細結果 ===")
 for i, result in enumerate(all_results):
-    print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}")
+    alpha_info = ""
+    if MODEL_NAME == 'DualMLPFusion' and 'final_alpha' in result:
+        alpha_info = f", α={result['final_alpha']:.4f}"
+    print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}")
 
 print(f"\n=== 実験完了 ===")
 print(f"データセット: {DATASET_NAME}")
 print(f"モデル: {MODEL_NAME}")
 print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
-print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}") 
+print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
+
+# DualMLPFusionモデルの最終α値情報
+if MODEL_NAME == 'DualMLPFusion' and 'final_alpha' in all_results[0]:
+    print(f"最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}") 
