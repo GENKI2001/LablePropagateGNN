@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
-from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info
+from utils.feature_creator import create_pca_features, create_label_features, create_positional_random_walk_label_features, display_node_features, get_feature_info, create_similarity_based_edges, create_similarity_based_edges_with_original
 from utils.edge_sampler import sample_edges, print_sampling_statistics
 from models import ModelFactory
 
@@ -17,16 +17,16 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Pubmed'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
 
 # モデル選択（MLPまたはGCN）
 # サポートされているモデル:
 # - 'MLP': 1-layer Multi-Layer Perceptron (グラフ構造を無視)
 # - 'GCN': Graph Convolutional Network (グラフ構造を活用)
-MODEL_NAME = 'MLP'  # ここを変更してモデルを切り替え ('MLP' または 'GCN')
+MODEL_NAME = 'GCN'  # ここを変更してモデルを切り替え ('MLP' または 'GCN')
 
 # 実験設定
-NUM_RUNS = 100  # 実験回数
+NUM_RUNS = 10  # 実験回数
 NUM_EPOCHS = 400  # エポック数
 
 # データ分割設定
@@ -40,17 +40,30 @@ EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接�
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
 PCA_COMPONENTS = 128  # PCAで圧縮する次元数
 USE_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を利用
-TEMPERATURE = 1.0  # 温度パラメータ
+TEMPERATURE = 2.0  # 温度パラメータ
+DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
+
+# ランダムウォーク特徴量設定
+USE_POSITIONAL_RANDOM_WALK = False  # True: 順序付きランダムウォーク特徴量を利用
+RANDOM_WALK_NUM_WALKS = 100  # 各ノードから開始するランダムウォークの数
+RANDOM_WALK_LENGTH = 4  # ランダムウォークの長さ
+RANDOM_WALK_USE_TRAIN_ONLY = True  # True: 訓練ノードのみを使用, False: 全ノードを使用
 
 # エッジサンプリング設定
-USE_EDGE_SAMPLING = True  # True: エッジサンプリングを実行, False: スキップ
+USE_EDGE_SAMPLING = False  # True: エッジサンプリングを実行, False: スキップ
 EDGE_SAMPLING_METHOD = 'random'  # 'random', 'degree', 'class', 'structural', 'adaptive'
 EDGE_SAMPLING_RATIO = 0.5  # サンプリングするエッジの割合 (0.0-1.0)
 EDGE_SAMPLING_STRATEGY = 'high_degree'  # 各手法の戦略
 EDGE_SAMPLING_ALPHA = 0.5  # 適応的サンプリングの重みパラメータ
 
+# 類似度ベースエッジ作成設定
+USE_SIMILARITY_BASED_EDGES = True  # True: 類似度ベースエッジ作成を実行, False: スキップ
+SIMILARITY_EDGE_MODE = 'add'  # 'replace': 元のエッジを置き換え, 'add': 元のエッジに追加
+SIMILARITY_THRESHOLD = 0.99  # コサイン類似度の閾値 (0.0-1.0)
+SIMILARITY_EDGE_WEIGHT = 1.0  # 類似度ベースエッジの重み
+
 # モデルハイパーパラメータ
-HIDDEN_CHANNELS = 16  # 隠れ層の次元
+HIDDEN_CHANNELS = 32  # 隠れ層の次元
 NUM_LAYERS = 2        # レイヤー数
 DROPOUT = 0.5         # ドロップアウト率
 
@@ -71,6 +84,15 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # データセット読み込み
 data, dataset = load_dataset(DATASET_NAME, device)
+
+# 元の特徴量を無効化する場合
+if DISABLE_ORIGINAL_FEATURES:
+    print(f"\n=== 元のノード特徴量を無効化 ===")
+    print(f"元の特徴量形状: {data.x.shape}")
+    # 空の特徴量テンソルを作成（1次元のゼロベクトル）
+    data.x = torch.zeros(data.num_nodes, 0, device=device)
+    print(f"無効化後の特徴量形状: {data.x.shape}")
+    print(f"元の特徴量は使用されません。ラベル特徴量とランダムウォーク特徴量のみを使用します。")
 
 # 実験前にPCA処理を実行
 if USE_PCA:
@@ -129,6 +151,7 @@ print(f"最大hop数: {MAX_HOPS}")
 print(f"テストラベル除外: {EXCLUDE_TEST_LABELS}")
 print(f"PCA圧縮次元数: {PCA_COMPONENTS}")
 print(f"PCA使用: {USE_PCA}")
+print(f"元の特徴量無効化: {DISABLE_ORIGINAL_FEATURES}")
 print(f"隣接ノード特徴量使用: {USE_NEIGHBOR_LABEL_FEATURES}")
 print(f"エッジサンプリング使用: {USE_EDGE_SAMPLING}")
 if USE_EDGE_SAMPLING:
@@ -138,6 +161,16 @@ if USE_EDGE_SAMPLING:
         print(f"サンプリング戦略: {EDGE_SAMPLING_STRATEGY}")
     elif EDGE_SAMPLING_METHOD == 'adaptive':
         print(f"適応的サンプリング重み: {EDGE_SAMPLING_ALPHA}")
+print(f"類似度ベースエッジ作成使用: {USE_SIMILARITY_BASED_EDGES}")
+if USE_SIMILARITY_BASED_EDGES:
+    print(f"エッジモード: {SIMILARITY_EDGE_MODE}")
+    print(f"類似度閾値: {SIMILARITY_THRESHOLD}")
+    print(f"エッジ重み: {SIMILARITY_EDGE_WEIGHT}")
+print(f"順序付きランダムウォーク特徴量使用: {USE_POSITIONAL_RANDOM_WALK}")
+if USE_POSITIONAL_RANDOM_WALK:
+    print(f"ランダムウォーク長: {RANDOM_WALK_LENGTH}")
+    print(f"訓練ノードのみ使用: {RANDOM_WALK_USE_TRAIN_ONLY}")
+    print(f"予想ランダムウォーク特徴量次元: {dataset.num_classes}クラス × {RANDOM_WALK_LENGTH}hop = {dataset.num_classes * RANDOM_WALK_LENGTH}次元")
 print(f"隠れ層次元: {default_hidden_channels}")
 print(f"レイヤー数: {NUM_LAYERS}")
 print(f"ドロップアウト: {DROPOUT}")
@@ -174,17 +207,77 @@ for run in range(NUM_RUNS):
     print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
     
     # 実験中にラベル特徴量を作成
-    run_data, adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
+    adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
         run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS, 
         use_neighbor_label_features=USE_NEIGHBOR_LABEL_FEATURES,
         temperature=TEMPERATURE
     )
 
+    # 類似度ベースエッジ作成処理を実行
+    if USE_SIMILARITY_BASED_EDGES and neighbor_label_features is not None:
+        print(f"  類似度ベースエッジ作成処理を実行中...")
+        print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+        print(f"    類似度閾値: {SIMILARITY_THRESHOLD}")
+        
+        # 元のエッジ情報を保存
+        original_edge_count = run_data.edge_index.shape[1]
+        original_edge_index = run_data.edge_index.clone()
+        
+        if SIMILARITY_EDGE_MODE == 'replace':
+            # 元のエッジを置き換え
+            new_edge_index, new_adj_matrix, num_new_edges = create_similarity_based_edges(
+                neighbor_label_features, threshold=SIMILARITY_THRESHOLD, device=device
+            )
+            run_data.edge_index = new_edge_index
+            print(f"    元のエッジを類似度ベースエッジで置き換えました")
+            print(f"      元のエッジ数: {original_edge_count}")
+            print(f"      新しいエッジ数: {num_new_edges}")
+            
+        elif SIMILARITY_EDGE_MODE == 'add':
+            # 元のエッジに追加
+            combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
+                original_edge_index, neighbor_label_features, 
+                threshold=SIMILARITY_THRESHOLD, device=device, combine_with_original=True
+            )
+            run_data.edge_index = combined_edge_index
+            print(f"    元のエッジに類似度ベースエッジを追加しました")
+            print(f"      元のエッジ数: {num_orig}")
+            print(f"      追加されたエッジ数: {num_new}")
+            print(f"      総エッジ数: {num_total}")
+    elif USE_SIMILARITY_BASED_EDGES and neighbor_label_features is None:
+        print("    警告: neighbor_label_featuresがNoneのため、類似度ベースエッジ作成をスキップします")
+        print("    USE_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
+
     # 隣接ノードのラベル特徴量を結合
     if USE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
-        print(f"  隣接ノードラベル特徴量を結合: {run_data.x.shape} + {neighbor_label_features.shape}")
+        print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
         run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
         print(f"  結合後の特徴量形状: {run_data.x.shape}")
+
+    # 順序付きランダムウォーク特徴量を作成
+    if USE_POSITIONAL_RANDOM_WALK:
+        print(f"  順序付きランダムウォーク特徴量を作成中...")
+        print(f"    設定: ランダムウォーク長={RANDOM_WALK_LENGTH}, 訓練ノードのみ={RANDOM_WALK_USE_TRAIN_ONLY}")
+        
+        # 結合前の特徴量次元を記録
+        before_rw_features = run_data.x.shape[1]
+        
+        position_label_sum = create_positional_random_walk_label_features(
+            run_data, device, 
+            walk_length=RANDOM_WALK_LENGTH,
+            use_train_only=RANDOM_WALK_USE_TRAIN_ONLY
+        )
+        
+        # 結合後の特徴量次元を取得
+        after_rw_features = run_data.x.shape[1]
+        rw_feature_dim = after_rw_features - before_rw_features
+        run_data.x = torch.cat([run_data.x, position_label_sum], dim=1)
+        
+        print(f"  ランダムウォーク特徴量作成完了:")
+        print(f"    - 元の特徴量: {before_rw_features}次元")
+        print(f"    - ランダムウォーク特徴量: {rw_feature_dim}次元")
+        print(f"    - 結合後: {after_rw_features}次元")
+        print(f"    - 内訳: {dataset.num_classes}クラス × {RANDOM_WALK_LENGTH}hop = {dataset.num_classes * RANDOM_WALK_LENGTH}次元")
 
     # 特徴量情報を取得
     feature_info = get_feature_info(run_data, one_hot_labels, max_hops=MAX_HOPS)
