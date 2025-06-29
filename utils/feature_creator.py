@@ -124,7 +124,7 @@ def create_pca_features(data, device, pca_components=50, original_features=None)
 
     return data, pca_features, pca
 
-def create_label_features(data, device, max_hops=2, use_neighbor_label_features=True, temperature=1.0, label_smoothing=0.):
+def create_label_features(data, device, max_hops=2, calc_neighbor_label_features=True, temperature=1.0, label_smoothing=0.):
     print(f"現在の特徴量の形状: {data.x.shape}")
 
     # ワンホットエンコーディングの作成
@@ -151,7 +151,7 @@ def create_label_features(data, device, max_hops=2, use_neighbor_label_features=
     combined_features = data.x
     neighbor_label_features = None
 
-    if use_neighbor_label_features:
+    if calc_neighbor_label_features:
         print("隣接ノードのラベル特徴量を結合します")
         print(f"温度パラメータ: {temperature}")
         one_hot_labels_tensor = torch.tensor(one_hot_labels, dtype=torch.float32)

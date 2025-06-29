@@ -38,7 +38,7 @@ TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
 MAX_HOPS = 6       # 最大hop数（1, 2, 3, ...）
-USE_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を利用
+CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
 COMBINE_NEIGHBOR_LABEL_FEATURES = True  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
 TEMPERATURE = 1.0  # 温度パラメータ
 DISABLE_ORIGINAL_FEATURES = True  # True: 元のノード特徴量を無効化（data.xを空にする）
@@ -115,6 +115,10 @@ adjacency_matrices = create_normalized_adjacency_matrices(data, device, max_hops
 adj_1hop = get_adjacency_matrix(adjacency_matrices, 1)
 adj_2hop = get_adjacency_matrix(adjacency_matrices, 2)
 
+# 隣接行列をデータオブジェクトに追加
+data.adj_1hop = adj_1hop
+data.adj_2hop = adj_2hop
+
 # モデル情報を取得
 model_info = ModelFactory.get_model_info(MODEL_NAME)
 default_hidden_channels = model_info.get('default_hidden_channels', HIDDEN_CHANNELS)
@@ -133,7 +137,7 @@ print(f"最大hop数: {MAX_HOPS}")
 print(f"PCA圧縮次元数: {PCA_COMPONENTS}")
 print(f"PCA使用: {USE_PCA}")
 print(f"元の特徴量無効化: {DISABLE_ORIGINAL_FEATURES}")
-print(f"隣接ノード特徴量使用: {USE_NEIGHBOR_LABEL_FEATURES}")
+print(f"隣接ノードラベル特徴量計算: {CALC_NEIGHBOR_LABEL_FEATURES}")
 print(f"隣接ノード特徴量結合: {COMBINE_NEIGHBOR_LABEL_FEATURES}")
 print(f"類似度ベースエッジ作成使用: {USE_SIMILARITY_BASED_EDGES}")
 if USE_SIMILARITY_BASED_EDGES:
@@ -198,7 +202,7 @@ for run in range(NUM_RUNS):
     
     # 実験中にラベル特徴量を作成
     adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
-        run_data, device, max_hops=MAX_HOPS, use_neighbor_label_features=USE_NEIGHBOR_LABEL_FEATURES,
+        run_data, device, max_hops=MAX_HOPS, calc_neighbor_label_features=CALC_NEIGHBOR_LABEL_FEATURES,
         temperature=TEMPERATURE
     )
 
@@ -247,7 +251,7 @@ for run in range(NUM_RUNS):
             # ラベル分布特徴量のみでエッジ作成
             if label_features is None:
                 print("    警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
-                print("    USE_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
+                print("    CALC_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
             else:
                 if SIMILARITY_EDGE_MODE == 'replace':
                     new_edge_index, new_adj_matrix, num_new_edges = create_similarity_based_edges(
@@ -409,7 +413,7 @@ for run in range(NUM_RUNS):
         else:
             raw_features = run_data.x[:, :dataset.num_features]
         
-        if neighbor_label_features is not None and USE_NEIGHBOR_LABEL_FEATURES:
+        if neighbor_label_features is not None and CALC_NEIGHBOR_LABEL_FEATURES:
             # ラベル分布特徴量 + 生の特徴量を結合
             label_features = torch.cat([neighbor_label_features, raw_features], dim=1)
         else:
