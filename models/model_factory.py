@@ -6,7 +6,6 @@ from .mlp import MLP, MLPWithSkip
 from .gsl_labeldist import GSLModel_LabelDistr
 from .trigsl import TriFeatureGSLGNN
 from .mlp_and_gcn import MLPAndGCNFusion, MLPAndGCNEnsemble, GCNAndMLPConcat
-from .h2gcn import H2GCN
 
 class ModelFactory:
     """
@@ -222,14 +221,6 @@ class ModelFactory:
                 mlp_hidden_dim=mlp_hidden_dim
             )
         
-        elif model_name == 'H2GCN':
-            return H2GCN(
-                in_dim=in_channels,
-                hidden_dim=hidden_channels,
-                out_dim=out_channels,
-                num_layers=default_params['num_layers']
-            )
-        
         else:
             raise ValueError(f"Unsupported model: {model_name}")
     
@@ -310,11 +301,6 @@ class ModelFactory:
                 'parameters': ['xfeat_dim', 'xlabel_dim', 'hidden_channels', 'out_channels', 'dropout', 'gcn_hidden_dim', 'mlp_hidden_dim'],
                 'default_hidden_channels': 16
             },
-            'H2GCN': {
-                'description': 'H2GCN Model (uses 1-hop and 2-hop adjacency matrices)',
-                'parameters': ['in_dim', 'hidden_dim', 'out_dim', 'num_layers'],
-                'default_hidden_channels': 16
-            },
         }
         
         return model_info.get(model_name, {})
@@ -327,4 +313,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL', 'LINKX', 'TriFeatureGSLGNN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN'] 
+        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL', 'LINKX', 'TriFeatureGSLGNN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat'] 

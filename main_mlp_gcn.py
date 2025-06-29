@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
-from utils.feature_creator import create_pca_features, create_label_features, create_positional_random_walk_label_features, display_node_features, get_feature_info, create_similarity_based_edges, create_similarity_based_edges_with_original
+from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info, create_similarity_based_edges, create_similarity_based_edges_with_original
 from utils.adjacency_creator import create_normalized_adjacency_matrices, get_adjacency_matrix, apply_adjacency_to_features, combine_hop_features, print_adjacency_info
 from models import ModelFactory
 
@@ -38,16 +38,16 @@ TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
 MAX_HOPS = 6       # 最大hop数（1, 2, 3, ...）
-CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
-COMBINE_NEIGHBOR_LABEL_FEATURES = True  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
+CALC_NEIGHBOR_LABEL_FEATURES = False  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
+COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
 TEMPERATURE = 1.0  # 温度パラメータ
-DISABLE_ORIGINAL_FEATURES = True  # True: 元のノード特徴量を無効化（data.xを空にする）
+DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
 
 # 類似度ベースエッジ作成設定
-USE_SIMILARITY_BASED_EDGES = False  # True: 類似度ベースエッジ作成を実行, False: スキップ
+USE_SIMILARITY_BASED_EDGES = True  # True: 類似度ベースエッジ作成を実行, False: スキップ
 SIMILARITY_EDGE_MODE = 'add'  # 'replace': 元のエッジを置き換え, 'add': 元のエッジに追加
-SIMILARITY_FEATURE_TYPE = 'label'  # 'raw': 生の特徴量のみ, 'label': ラベル分布特徴量のみ, 'both': 両方
-SIMILARITY_RAW_THRESHOLD = 0.865  # 生の特徴量の類似度閾値 (0.0-1.0)
+SIMILARITY_FEATURE_TYPE = 'raw'  # 'raw': 生の特徴量のみ, 'label': ラベル分布特徴量のみ
+SIMILARITY_RAW_THRESHOLD = 0.165  # 生の特徴量の類似度閾値 (0.0-1.0)
 SIMILARITY_LABEL_THRESHOLD = 0.9999997  # ラベル分布特徴量の類似度閾値 (0.0-1.0)
 
 # モデルハイパーパラメータ
@@ -66,12 +66,6 @@ ENSEMBLE_METHOD = 'concat_alpha'  # 'average', 'weighted', 'voting', 'concat_alp
 # PCA設定
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
 PCA_COMPONENTS = 128  # PCAで圧縮する次元数結合後の特徴量の形状:
-
-# ランダムウォーク特徴量設定
-USE_POSITIONAL_RANDOM_WALK = False  # True: 順序付きランダムウォーク特徴量を利用
-RANDOM_WALK_NUM_WALKS = 100  # 各ノードから開始するランダムウォークの数
-RANDOM_WALK_LENGTH = 4  # ランダムウォークの長さ
-RANDOM_WALK_USE_TRAIN_ONLY = True  # True: 訓練ノードのみを使用, False: 全ノードを使用
 
 # 最適化設定
 LEARNING_RATE = 0.01  # 学習率
@@ -119,6 +113,30 @@ adj_2hop = get_adjacency_matrix(adjacency_matrices, 2)
 data.adj_1hop = adj_1hop
 data.adj_2hop = adj_2hop
 
+# 類似度ベースエッジ生成（dataに保存）
+if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw':
+    print(f"\n=== 類似度ベースエッジ生成（dataに保存） ===")
+    print(f"エッジモード: {SIMILARITY_EDGE_MODE}")
+    print(f"特徴量タイプ: {SIMILARITY_FEATURE_TYPE}")
+    print(f"生の特徴量類似度閾値: {SIMILARITY_RAW_THRESHOLD}")
+    
+    # 生の特徴量を取得
+    if USE_PCA:
+        raw_features = data.x[:, :PCA_COMPONENTS]
+    else:
+        raw_features = data.x[:, :dataset.num_features]
+    
+    # 置き換え用のエッジを生成
+    similarity_edge_index, similarity_adj_matrix, num_similarity_edges = create_similarity_based_edges(
+        raw_features, threshold=SIMILARITY_RAW_THRESHOLD, device=device
+    )
+    data.raw_similarity_edge_index = similarity_edge_index
+    data.raw_similarity_adj_matrix = similarity_adj_matrix
+    data.raw_num_similarity_edges = num_similarity_edges
+    print(f"置き換え用エッジ生成完了: {num_similarity_edges}エッジ")
+    
+    print(f"類似度ベースエッジ生成完了（dataに保存済み）")
+
 # モデル情報を取得
 model_info = ModelFactory.get_model_info(MODEL_NAME)
 default_hidden_channels = model_info.get('default_hidden_channels', HIDDEN_CHANNELS)
@@ -147,14 +165,6 @@ if USE_SIMILARITY_BASED_EDGES:
         print(f"生の特徴量類似度閾値: {SIMILARITY_RAW_THRESHOLD}")
     elif SIMILARITY_FEATURE_TYPE == 'label':
         print(f"ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
-    elif SIMILARITY_FEATURE_TYPE == 'both':
-        print(f"生の特徴量類似度閾値: {SIMILARITY_RAW_THRESHOLD}")
-        print(f"ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
-print(f"順序付きランダムウォーク特徴量使用: {USE_POSITIONAL_RANDOM_WALK}")
-if USE_POSITIONAL_RANDOM_WALK:
-    print(f"ランダムウォーク長: {RANDOM_WALK_LENGTH}")
-    print(f"訓練ノードのみ使用: {RANDOM_WALK_USE_TRAIN_ONLY}")
-    print(f"予想ランダムウォーク特徴量次元: {dataset.num_classes}クラス × {RANDOM_WALK_LENGTH}hop = {dataset.num_classes * RANDOM_WALK_LENGTH}次元")
 print(f"隠れ層次元: {default_hidden_channels}")
 print(f"レイヤー数: {NUM_LAYERS}")
 print(f"ドロップアウト: {DROPOUT}")
@@ -206,140 +216,6 @@ for run in range(NUM_RUNS):
         temperature=TEMPERATURE
     )
 
-    # 類似度ベースエッジ作成処理を実行
-    if USE_SIMILARITY_BASED_EDGES:
-        print(f"  類似度ベースエッジ作成処理を実行中...")
-        print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
-        print(f"    特徴量タイプ: {SIMILARITY_FEATURE_TYPE}")
-        
-        # 元のエッジ情報を保存
-        original_edge_count = run_data.edge_index.shape[1]
-        original_edge_index = run_data.edge_index.clone()
-        
-        # 生の特徴量を取得
-        if USE_PCA:
-            raw_features = run_data.x[:, :PCA_COMPONENTS]
-        else:
-            raw_features = run_data.x[:, :dataset.num_features]
-        
-        # ラベル分布特徴量を取得
-        label_features = neighbor_label_features if neighbor_label_features is not None else None
-        
-        if SIMILARITY_FEATURE_TYPE == 'raw':
-            # 生の特徴量のみでエッジ作成
-            if SIMILARITY_EDGE_MODE == 'replace':
-                new_edge_index, new_adj_matrix, num_new_edges = create_similarity_based_edges(
-                    raw_features, threshold=SIMILARITY_RAW_THRESHOLD, device=device
-                )
-                run_data.edge_index = new_edge_index
-                print(f"    生の特徴量で元のエッジを置き換えました")
-                print(f"      元のエッジ数: {original_edge_count}")
-                print(f"      新しいエッジ数: {num_new_edges}")
-                
-            elif SIMILARITY_EDGE_MODE == 'add':
-                combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
-                    original_edge_index, raw_features, 
-                    threshold=SIMILARITY_RAW_THRESHOLD, device=device, combine_with_original=True
-                )
-                run_data.edge_index = combined_edge_index
-                print(f"    生の特徴量で元のエッジに追加しました")
-                print(f"      元のエッジ数: {num_orig}")
-                print(f"      追加されたエッジ数: {num_new}")
-                print(f"      総エッジ数: {num_total}")
-        
-        elif SIMILARITY_FEATURE_TYPE == 'label':
-            # ラベル分布特徴量のみでエッジ作成
-            if label_features is None:
-                print("    警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
-                print("    CALC_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
-            else:
-                if SIMILARITY_EDGE_MODE == 'replace':
-                    new_edge_index, new_adj_matrix, num_new_edges = create_similarity_based_edges(
-                        label_features, threshold=SIMILARITY_LABEL_THRESHOLD, device=device
-                    )
-                    run_data.edge_index = new_edge_index
-                    print(f"    ラベル分布特徴量で元のエッジを置き換えました")
-                    print(f"      元のエッジ数: {original_edge_count}")
-                    print(f"      新しいエッジ数: {num_new_edges}")
-                    
-                elif SIMILARITY_EDGE_MODE == 'add':
-                    combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
-                        original_edge_index, label_features, 
-                        threshold=SIMILARITY_LABEL_THRESHOLD, device=device, combine_with_original=True
-                    )
-                    run_data.edge_index = combined_edge_index
-                    print(f"    ラベル分布特徴量で元のエッジに追加しました")
-                    print(f"      元のエッジ数: {num_orig}")
-                    print(f"      追加されたエッジ数: {num_new}")
-                    print(f"      総エッジ数: {num_total}")
-        
-        elif SIMILARITY_FEATURE_TYPE == 'both':
-            # 両方の特徴量でエッジ作成
-            combined_edge_index = original_edge_index.clone()
-            total_new_edges = 0
-            
-            # 生の特徴量でエッジ作成
-            raw_edge_index, _, num_raw_edges = create_similarity_based_edges(
-                raw_features, threshold=SIMILARITY_RAW_THRESHOLD, device=device
-            )
-            
-            # ラベル分布特徴量でエッジ作成
-            if label_features is not None:
-                label_edge_index, _, num_label_edges = create_similarity_based_edges(
-                    label_features, threshold=SIMILARITY_LABEL_THRESHOLD, device=device
-                )
-            else:
-                label_edge_index = torch.empty((2, 0), dtype=torch.long, device=device)
-                num_label_edges = 0
-                print("    警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
-            
-            # エッジモードに応じて処理
-            if SIMILARITY_EDGE_MODE == 'add':
-                # 元のエッジに追加
-                if len(raw_edge_index) > 0:
-                    combined_edge_index = torch.cat([combined_edge_index, raw_edge_index], dim=1)
-                    total_new_edges += num_raw_edges
-                    print(f"    生の特徴量でエッジ追加: {num_raw_edges}エッジ")
-                
-                if len(label_edge_index) > 0:
-                    combined_edge_index = torch.cat([combined_edge_index, label_edge_index], dim=1)
-                    total_new_edges += num_label_edges
-                    print(f"    ラベル分布特徴量でエッジ追加: {num_label_edges}エッジ")
-                    
-            elif SIMILARITY_EDGE_MODE == 'replace':
-                # 元のエッジを置き換え
-                if len(raw_edge_index) > 0 and len(label_edge_index) > 0:
-                    combined_edge_index = torch.cat([raw_edge_index, label_edge_index], dim=1)
-                    total_new_edges = num_raw_edges + num_label_edges
-                    print(f"    生の特徴量でエッジ置き換え: {num_raw_edges}エッジ")
-                    print(f"    ラベル分布特徴量でエッジ置き換え: {num_label_edges}エッジ")
-                elif len(raw_edge_index) > 0:
-                    combined_edge_index = raw_edge_index
-                    total_new_edges = num_raw_edges
-                    print(f"    生の特徴量でエッジ置き換え: {num_raw_edges}エッジ")
-                elif len(label_edge_index) > 0:
-                    combined_edge_index = label_edge_index
-                    total_new_edges = num_label_edges
-                    print(f"    ラベル分布特徴量でエッジ置き換え: {num_label_edges}エッジ")
-                else:
-                    print("    警告: 有効なエッジが作成されませんでした")
-            
-            # 重複エッジを除去
-            if len(combined_edge_index) > 0:
-                edge_pairs = combined_edge_index.t()
-                unique_edges, _ = torch.unique(edge_pairs, dim=0, return_inverse=True)
-                combined_edge_index = unique_edges.t()
-            
-            run_data.edge_index = combined_edge_index
-            final_edge_count = combined_edge_index.shape[1]
-            
-            print(f"    両方の特徴量でエッジ作成完了:")
-            print(f"      元のエッジ数: {original_edge_count}")
-            print(f"      追加されたエッジ数: {total_new_edges}")
-            print(f"      最終エッジ数: {final_edge_count}")
-            if original_edge_count > 0:
-                print(f"      エッジ増加率: {(final_edge_count - original_edge_count) / original_edge_count * 100:.2f}%")
-
     # 隣接ノードのラベル特徴量を結合
     if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
         print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
@@ -349,30 +225,62 @@ for run in range(NUM_RUNS):
             run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
         print(f"  結合後の特徴量形状: {run_data.x.shape}")
 
-    # 順序付きランダムウォーク特徴量を作成
-    if USE_POSITIONAL_RANDOM_WALK:
-        print(f"  順序付きランダムウォーク特徴量を作成中...")
-        print(f"    設定: ランダムウォーク長={RANDOM_WALK_LENGTH}, 訓練ノードのみ={RANDOM_WALK_USE_TRAIN_ONLY}")
+    # 生の特徴量類似度ベースエッジを必要に応じて結合
+    if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw' and hasattr(data, 'raw_similarity_edge_index'):
+        print(f"  類似度ベースエッジを結合中...")
+        print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
         
-        # 結合前の特徴量次元を記録
-        before_rw_features = run_data.x.shape[1]
+        if SIMILARITY_EDGE_MODE == 'replace':
+            # 元のエッジを類似度ベースエッジで置き換え
+            original_edge_count = run_data.edge_index.shape[1]
+            run_data.edge_index = data.raw_similarity_edge_index.clone()
+            print(f"    元のエッジを類似度ベースエッジで置き換え: {original_edge_count} → {data.raw_num_similarity_edges}")
+            
+        elif SIMILARITY_EDGE_MODE == 'add':
+            # 元のエッジに類似度ベースエッジを追加
+            original_edge_count = run_data.edge_index.shape[1]
+            # 元のエッジと類似度ベースエッジを結合
+            combined_edge_index = torch.cat([run_data.edge_index, data.raw_similarity_edge_index], dim=1)
+            # 重複エッジを除去
+            edge_pairs = combined_edge_index.t()
+            unique_edges, _ = torch.unique(edge_pairs, dim=0, return_inverse=True)
+            run_data.edge_index = unique_edges.t()
+            final_edge_count = run_data.edge_index.shape[1]
+            print(f"    元のエッジに類似度ベースエッジを追加: {original_edge_count} + {data.raw_num_similarity_edges} → {final_edge_count}")
         
-        position_label_sum = create_positional_random_walk_label_features(
-            run_data, device, 
-            walk_length=RANDOM_WALK_LENGTH,
-            use_train_only=RANDOM_WALK_USE_TRAIN_ONLY
-        )
+        print(f"  エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
+
+    # ラベル分布特徴量類似度ベースエッジを必要に応じて結合
+    if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is not None:
+        print(f"  ラベル分布特徴量類似度ベースエッジを結合中...")
+        print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+        print(f"    ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
         
-        # 結合後の特徴量次元を取得
-        after_rw_features = run_data.x.shape[1]
-        rw_feature_dim = after_rw_features - before_rw_features
-        run_data.x = torch.cat([run_data.x, position_label_sum], dim=1)
+        # ラベル分布特徴量で類似度ベースエッジを作成
+        if SIMILARITY_EDGE_MODE == 'replace':
+            # 元のエッジをラベル分布特徴量ベースエッジで置き換え
+            original_edge_count = run_data.edge_index.shape[1]
+            label_edge_index, label_adj_matrix, num_label_edges = create_similarity_based_edges(
+                neighbor_label_features, threshold=SIMILARITY_LABEL_THRESHOLD, device=device
+            )
+            run_data.edge_index = label_edge_index
+            print(f"    元のエッジをラベル分布特徴量ベースエッジで置き換え: {original_edge_count} → {num_label_edges}")
+            
+        elif SIMILARITY_EDGE_MODE == 'add':
+            # 元のエッジにラベル分布特徴量ベースエッジを追加
+            original_edge_count = run_data.edge_index.shape[1]
+            combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
+                run_data.edge_index, neighbor_label_features, 
+                threshold=SIMILARITY_LABEL_THRESHOLD, device=device, combine_with_original=True
+            )
+            run_data.edge_index = combined_edge_index
+            print(f"    元のエッジにラベル分布特徴量ベースエッジを追加: {num_orig} + {num_new} → {num_total}")
         
-        print(f"  ランダムウォーク特徴量作成完了:")
-        print(f"    - 元の特徴量: {before_rw_features}次元")
-        print(f"    - ランダムウォーク特徴量: {rw_feature_dim}次元")
-        print(f"    - 結合後: {after_rw_features}次元")
-        print(f"    - 内訳: {dataset.num_classes}クラス × {RANDOM_WALK_LENGTH}hop = {dataset.num_classes * RANDOM_WALK_LENGTH}次元")
+        print(f"  ラベル分布特徴量エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
+    
+    elif USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is None:
+        print(f"  警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
+        print(f"    CALC_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
 
     # 特徴量情報を取得
     feature_info = get_feature_info(run_data, one_hot_labels, max_hops=MAX_HOPS)
