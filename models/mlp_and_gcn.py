@@ -233,61 +233,6 @@ class GCNAndMLPConcat(nn.Module):
         print("=" * 50)
 
 
-class MLPAndGCNSerial(nn.Module):
-    """
-    GCNの後にMLPを適用する直列ハイブリッドモデル
-    
-    Args:
-        in_channels (int): 入力特徴量の次元
-        hidden_channels (int): 隠れ層の次元
-        out_channels (int): 出力特徴量の次元
-        gcn_layers (int): GCNのレイヤー数（デフォルト: 2）
-        mlp_layers (int): MLPのレイヤー数（デフォルト: 1）
-        dropout (float): ドロップアウト率（デフォルト: 0.0）
-    """
-    
-    def __init__(self, in_channels, hidden_channels, out_channels, gcn_layers=2, 
-                 mlp_layers=1, dropout=0.0):
-        super(MLPAndGCNSerial, self).__init__()
-        self.gcn_layers = gcn_layers
-        self.mlp_layers = mlp_layers
-        self.dropout = dropout
-        
-        # GCN部分
-        self.gcn_convs = nn.ModuleList()
-        self.gcn_convs.append(GCNConv(in_channels, hidden_channels))
-        for _ in range(gcn_layers - 2):
-            self.gcn_convs.append(GCNConv(hidden_channels, hidden_channels))
-        if gcn_layers > 1:
-            self.gcn_convs.append(GCNConv(hidden_channels, hidden_channels))
-        
-        # MLP部分
-        self.mlp_layers_list = nn.ModuleList()
-        for _ in range(mlp_layers - 1):
-            self.mlp_layers_list.append(nn.Linear(hidden_channels, hidden_channels))
-        if mlp_layers > 0:
-            self.mlp_layers_list.append(nn.Linear(hidden_channels, out_channels))
-        
-    def forward(self, x, edge_index):
-        # GCN処理
-        for i, conv in enumerate(self.gcn_convs):
-            x = conv(x, edge_index)
-            if i < len(self.gcn_convs) - 1:
-                x = F.relu(x)
-                if self.dropout > 0:
-                    x = F.dropout(x, p=self.dropout, training=self.training)
-        
-        # MLP処理
-        for i, layer in enumerate(self.mlp_layers_list):
-            x = layer(x)
-            if i < len(self.mlp_layers_list) - 1:
-                x = F.relu(x)
-                if self.dropout > 0:
-                    x = F.dropout(x, p=self.dropout, training=self.training)
-        
-        return x
-
-
 class MLPAndGCNEnsemble(nn.Module):
     """
     y = Classifier(α * GCN(Xfeat, A) + (1 - α) * MLP([Ydist, Xfeat]))

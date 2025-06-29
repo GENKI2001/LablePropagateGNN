@@ -11,7 +11,6 @@ from models import ModelFactory
 # ============================================================================
 
 # データセット選択
-# サポートされているデータセット:
 # CustomGraph: 'CustomGraph_Chain'
 # Planetoid: 'Cora', 'Citeseer', 'Pubmed'
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
@@ -23,12 +22,10 @@ DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
 # サポートされているモデル:
 # - 'MLP': 1-layer Multi-Layer Perceptron (グラフ構造を無視)
 # - 'GCN': Graph Convolutional Network (グラフ構造を活用)
-# - 'DualMLPFusion': Dual MLP Fusion Model (生の特徴量とラベル分布特徴量を別々のMLPで処理)
 # - 'MLPAndGCNFusion': MLP-GCN Fusion Model (MLPとGCNを並列実行し融合)
-# - 'MLPAndGCNSerial': MLP-GCN Serial Model (GCNの後にMLPを適用)
 # - 'MLPAndGCNEnsemble': MLP-GCN Ensemble Model (MLPとGCNを独立実行しアンサンブル)
 # - 'GCNAndMLPConcat': GCN-MLP Concat Model (GCNで生の特徴量、MLPで生の特徴量+ラベル分布特徴量を処理)
-MODEL_NAME = 'GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'DualMLPFusion', 'MLPAndGCNFusion', 'MLPAndGCNSerial', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat')
+MODEL_NAME = 'GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat')
 
 # 実験設定
 NUM_RUNS = 10  # 実験回数
@@ -158,8 +155,6 @@ print(f"\n=== 実験設定 ===")
 print(f"データセット: {DATASET_NAME}")
 print(f"モデル: {MODEL_NAME}")
 print(f"説明: {model_info.get('description', 'N/A')}")
-if MODEL_NAME == 'DualMLPFusion':
-    print(f"DualMLPFusion設定: 生の特徴量とラベル分布特徴量を別々のMLPで処理")
 print(f"ノード数: {data.num_nodes}")
 print(f"エッジ数: {data.edge_index.shape[1]}")
 print(f"クラス数: {dataset.num_classes}")
@@ -387,23 +382,10 @@ for run in range(NUM_RUNS):
     if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
         print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
         
-        # DualMLPFusionの場合は、生の特徴量とラベル分布特徴量を分離して保存
-        if MODEL_NAME == 'DualMLPFusion':
-            # 元の特徴量（生の特徴量）を保存
-            raw_features = run_data.x.clone()
-            label_dist_features = neighbor_label_features
-            
-            # 結合してDualMLPFusionに渡す
-            run_data.x = torch.cat([raw_features, label_dist_features], dim=1)
-            print(f"  DualMLPFusion用に特徴量を分離・結合:")
-            print(f"    生の特徴量: {raw_features.shape}")
-            print(f"    ラベル分布特徴量: {label_dist_features.shape}")
-            print(f"    結合後: {run_data.x.shape}")
-        else:
-            # 通常の結合
-            if COMBINE_NEIGHBOR_LABEL_FEATURES:
-                run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
-            print(f"  結合後の特徴量形状: {run_data.x.shape}")
+        # 通常の結合
+        if COMBINE_NEIGHBOR_LABEL_FEATURES:
+            run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
+        print(f"  結合後の特徴量形状: {run_data.x.shape}")
 
     # 順序付きランダムウォーク特徴量を作成
     if USE_POSITIONAL_RANDOM_WALK:
@@ -451,29 +433,8 @@ for run in range(NUM_RUNS):
         'dropout': DROPOUT
     }
     
-    # DualMLPFusionの場合は、生の特徴量とラベル分布特徴量の次元を指定
-    if MODEL_NAME == 'DualMLPFusion' and USE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
-        # 元の特徴量次元（PCA処理前の生の特徴量）
-        if USE_PCA:
-            raw_feature_dim = PCA_COMPONENTS
-        else:
-            raw_feature_dim = dataset.num_features
-        
-        # ラベル分布特徴量の次元
-        label_dist_dim = neighbor_label_features.shape[1]
-        
-        model_kwargs.update({
-            'in_dim1': raw_feature_dim,  # 生の特徴量の次元
-            'in_dim2': label_dist_dim    # ラベル分布特徴量の次元
-        })
-        
-        print(f"  DualMLPFusionモデル作成:")
-        print(f"    生の特徴量次元: {raw_feature_dim}")
-        print(f"    ラベル分布特徴量次元: {label_dist_dim}")
-        print(f"    総特徴量次元: {actual_feature_dim}")
-    
     # MLPAndGCNFusionの場合は融合方法を指定
-    elif MODEL_NAME == 'MLPAndGCNFusion':
+    if MODEL_NAME == 'MLPAndGCNFusion':
         model_kwargs.update({
             'fusion_method': FUSION_METHOD
         })
@@ -614,11 +575,9 @@ for run in range(NUM_RUNS):
             accs.append(int(correct.sum()) / int(mask.sum()))
         return accs
     
-    # DualMLPFusionモデルのα値を取得する関数
+    # α値を取得する関数
     def get_alpha_value():
-        if MODEL_NAME == 'DualMLPFusion' and hasattr(model, 'get_alpha'):
-            return model.get_alpha()
-        elif MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
+        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
             return torch.clamp(model.alpha, 0, 1).item()
         return None
     
@@ -653,11 +612,7 @@ for run in range(NUM_RUNS):
         # 進捗表示
         if epoch % DISPLAY_PROGRESS_EVERY == 0:
             alpha_info = ""
-            if MODEL_NAME == 'DualMLPFusion':
-                alpha_val = get_alpha_value()
-                if alpha_val is not None:
-                    alpha_info = f", α={alpha_val:.4f}"
-            elif MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
+            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
                 alpha_val = get_alpha_value()
                 beta_val = get_beta_value()
                 if alpha_val is not None and beta_val is not None:
@@ -667,15 +622,8 @@ for run in range(NUM_RUNS):
             
             print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}')
     
-    # DualMLPFusionモデルの最終α値を表示
-    if MODEL_NAME == 'DualMLPFusion':
-        final_alpha = get_alpha_value()
-        if final_alpha is not None:
-            print(f"\n=== DualMLPFusion 最終α値 ===")
-            model.print_alpha_info()
-    
     # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値を表示
-    elif MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
+    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
         final_alpha = get_alpha_value()
         final_beta = get_beta_value()
         if final_alpha is not None or final_beta is not None:
@@ -701,16 +649,8 @@ for run in range(NUM_RUNS):
         'best_test_acc': best_test_acc
     }
     
-    # DualMLPFusionの場合はα値も保存
-    if MODEL_NAME == 'DualMLPFusion':
-        final_alpha = get_alpha_value()
-        if final_alpha is not None:
-            run_result['final_alpha'] = final_alpha
-            alpha_info = model.get_alpha_info()
-            run_result['alpha_info'] = alpha_info
-    
     # MLPAndGCNFusion/MLPAndGCNEnsembleの場合はαとβ値も保存
-    elif MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
+    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
         final_alpha = get_alpha_value()
         final_beta = get_beta_value()
         if final_alpha is not None:
@@ -772,21 +712,8 @@ print(f"\nベスト結果:")
 print(f"  Val:   {np.mean(best_val_accs):.4f} ± {np.std(best_val_accs):.4f}")
 print(f"  Test:  {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
 
-# DualMLPFusionモデルのα値統計
-if MODEL_NAME == 'DualMLPFusion' and 'final_alpha' in all_results[0]:
-    final_alphas = [r['final_alpha'] for r in all_results]
-    print(f"\nDualMLPFusion α値統計:")
-    print(f"  最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}")
-    print(f"  α値範囲: [{min(final_alphas):.4f}, {max(final_alphas):.4f}]")
-    
-    # 特徴量の重み統計
-    feature1_weights = [r['alpha_info']['feature1_weight'] for r in all_results]
-    feature2_weights = [r['alpha_info']['feature2_weight'] for r in all_results]
-    print(f"  生の特徴量重み: {np.mean(feature1_weights):.4f} ± {np.std(feature1_weights):.4f}")
-    print(f"  ラベル分布特徴量重み: {np.mean(feature2_weights):.4f} ± {np.std(feature2_weights):.4f}")
-
 # MLPAndGCNFusion/MLPAndGCNEnsembleモデルのαとβ値統計
-elif MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:
+if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:
     final_alphas = [r['final_alpha'] for r in all_results]
     final_betas = [r['final_1_minus_alpha'] for r in all_results]
     print(f"\n{MODEL_NAME} α・(1-α)値統計:")
@@ -805,9 +732,7 @@ elif MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in
 print(f"\n=== 詳細結果 ===")
 for i, result in enumerate(all_results):
     alpha_info = ""
-    if MODEL_NAME == 'DualMLPFusion' and 'final_alpha' in result:
-        alpha_info = f", α={result['final_alpha']:.4f}"
-    elif MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in result:
+    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in result:
         alpha_info = f", α={result['final_alpha']:.4f}"
         if 'final_1_minus_alpha' in result:
             alpha_info += f", 1-α={result['final_1_minus_alpha']:.4f}"
@@ -819,11 +744,7 @@ print(f"モデル: {MODEL_NAME}")
 print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
 print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
 
-# DualMLPFusionモデルの最終α値情報
-if MODEL_NAME == 'DualMLPFusion' and 'final_alpha' in all_results[0]:
-    print(f"最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}")
-
 # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値情報
-elif MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:
+if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:
     print(f"最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}")
     print(f"最終(1-α)値: {np.mean(final_betas):.4f} ± {np.std(final_betas):.4f}") 

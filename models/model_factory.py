@@ -3,10 +3,9 @@ from torch_geometric.nn import LINKX
 from .gcn import GCN, GCNWithSkip
 from .gat import GAT, GATWithSkip, GATv2
 from .mlp import MLP, MLPWithSkip
-from .dual_mlp import DualMLPFusion
 from .gsl_labeldist import GSLModel_LabelDistr
 from .trigsl import TriFeatureGSLGNN
-from .mlp_and_gcn import MLPAndGCNFusion, MLPAndGCNSerial, MLPAndGCNEnsemble, GCNAndMLPConcat
+from .mlp_and_gcn import MLPAndGCNFusion, MLPAndGCNEnsemble, GCNAndMLPConcat
 from .h2gcn import H2GCN
 
 class ModelFactory:
@@ -114,20 +113,6 @@ class ModelFactory:
                 dropout=default_params['dropout']
             )
         
-        elif model_name == 'DualMLPFusion':
-            # DualMLPFusionの場合は、in_dim1とin_dim2を別々に指定する必要がある
-            in_dim1 = kwargs.get('in_dim1', in_channels)
-            in_dim2 = kwargs.get('in_dim2', in_channels)
-            
-            return DualMLPFusion(
-                in_dim1=in_dim1,
-                in_dim2=in_dim2,
-                hidden_dim=hidden_channels,
-                out_dim=out_channels,
-                num_layers=default_params['num_layers'],
-                dropout=default_params['dropout']
-            )
-        
         elif model_name == 'GSL':
             if default_params['num_nodes'] is None:
                 raise ValueError("GSL model requires 'num_nodes' parameter")
@@ -203,18 +188,6 @@ class ModelFactory:
                 num_layers=default_params['num_layers'],
                 dropout=default_params['dropout'],
                 fusion_method=fusion_method
-            )
-        
-        elif model_name == 'MLPAndGCNSerial':
-            gcn_layers = kwargs.get('gcn_layers', 2)
-            mlp_layers = kwargs.get('mlp_layers', 1)
-            return MLPAndGCNSerial(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-                gcn_layers=gcn_layers,
-                mlp_layers=mlp_layers,
-                dropout=default_params['dropout']
             )
         
         elif model_name == 'MLPAndGCNEnsemble':
@@ -307,11 +280,6 @@ class ModelFactory:
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
             },
-            'DualMLPFusion': {
-                'description': 'Dual MLP Fusion Model (combines raw features and label distribution features)',
-                'parameters': ['in_dim1', 'in_dim2', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
-                'default_hidden_channels': 16
-            },
             'GSL': {
                 'description': 'Graph Structure Learning Model (supports MLP and GCN classifiers)',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_nodes', 'label_embed_dim', 'adj_init', 'model_type', 'num_layers', 'dropout'],
@@ -330,11 +298,6 @@ class ModelFactory:
             'MLPAndGCNFusion': {
                 'description': 'MLP-GCN Fusion Model',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'fusion_method'],
-                'default_hidden_channels': 16
-            },
-            'MLPAndGCNSerial': {
-                'description': 'MLP-GCN Serial Model',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'gcn_layers', 'mlp_layers', 'dropout'],
                 'default_hidden_channels': 16
             },
             'MLPAndGCNEnsemble': {
@@ -364,4 +327,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'DualMLPFusion', 'GSL', 'LINKX', 'TriFeatureGSLGNN', 'MLPAndGCNFusion', 'MLPAndGCNSerial', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN'] 
+        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL', 'LINKX', 'TriFeatureGSLGNN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN'] 
