@@ -5,23 +5,46 @@ from torch_geometric.nn import MLP as PyGMLP
 
 class MLP(torch.nn.Module):
     """
-    1層のMLPモデル
+    多層MLPモデル
     グラフ構造を考慮せず、ノード特徴量のみを使用して分類を行う
     """
     
-    def __init__(self, in_channels, hidden_channels, out_channels, dropout=0.0):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers=2, dropout=0.0):
         """
         Args:
             in_channels (int): 入力特徴量の次元
-            hidden_channels (int): 隠れ層の次元（このモデルでは使用されない）
+            hidden_channels (int): 隠れ層の次元
             out_channels (int): 出力特徴量の次元
+            num_layers (int): レイヤー数（最低2層）
             dropout (float): ドロップアウト率
         """
         super(MLP, self).__init__()
         
-        # 1層のMLP: 入力から出力への直接的な線形変換
-        self.linear = torch.nn.Linear(in_channels, out_channels)
-        self.dropout = dropout
+        # 最低2層は必要（入力層 + 出力層）
+        num_layers = max(2, num_layers)
+        
+        # レイヤーを構築
+        layers = []
+        
+        # 入力層
+        layers.append(torch.nn.Linear(in_channels, hidden_channels))
+        layers.append(torch.nn.ReLU())
+        if dropout > 0:
+            layers.append(torch.nn.Dropout(dropout))
+        
+        # 中間層（num_layers > 2の場合）
+        for _ in range(num_layers - 2):
+            layers.append(torch.nn.Linear(hidden_channels, hidden_channels))
+            layers.append(torch.nn.ReLU())
+            if dropout > 0:
+                layers.append(torch.nn.Dropout(dropout))
+        
+        # 出力層
+        layers.append(torch.nn.Linear(hidden_channels, out_channels))
+        
+        # Sequentialでまとめる
+        self.mlp = torch.nn.Sequential(*layers)
+        self.num_layers = num_layers
     
     def forward(self, x, edge_index=None):
         """
@@ -35,33 +58,51 @@ class MLP(torch.nn.Module):
             torch.Tensor: 出力特徴量 [num_nodes, out_channels]
         """
         # グラフ構造は無視して、ノード特徴量のみを使用
-        x = self.linear(x)
-        
-        if self.dropout > 0:
-            x = F.dropout(x, p=self.dropout, training=self.training)
-        
-        return x
+        return self.mlp(x)
 
 
 class MLPWithSkip(torch.nn.Module):
     """
-    スキップ接続付きの1層MLPモデル
+    スキップ接続付きの多層MLPモデル
     入力特徴量と出力特徴量を結合するスキップ接続を含む
     """
     
-    def __init__(self, in_channels, hidden_channels, out_channels, dropout=0.0):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers=2, dropout=0.0):
         """
         Args:
             in_channels (int): 入力特徴量の次元
-            hidden_channels (int): 隠れ層の次元（このモデルでは使用されない）
+            hidden_channels (int): 隠れ層の次元
             out_channels (int): 出力特徴量の次元
+            num_layers (int): レイヤー数（最低2層）
             dropout (float): ドロップアウト率
         """
         super(MLPWithSkip, self).__init__()
         
-        # 1層のMLP: 入力から出力への直接的な線形変換
-        self.linear = torch.nn.Linear(in_channels, out_channels)
-        self.dropout = dropout
+        # 最低2層は必要（入力層 + 出力層）
+        num_layers = max(2, num_layers)
+        
+        # レイヤーを構築
+        layers = []
+        
+        # 入力層
+        layers.append(torch.nn.Linear(in_channels, hidden_channels))
+        layers.append(torch.nn.ReLU())
+        if dropout > 0:
+            layers.append(torch.nn.Dropout(dropout))
+        
+        # 中間層（num_layers > 2の場合）
+        for _ in range(num_layers - 2):
+            layers.append(torch.nn.Linear(hidden_channels, hidden_channels))
+            layers.append(torch.nn.ReLU())
+            if dropout > 0:
+                layers.append(torch.nn.Dropout(dropout))
+        
+        # 出力層
+        layers.append(torch.nn.Linear(hidden_channels, out_channels))
+        
+        # Sequentialでまとめる
+        self.mlp = torch.nn.Sequential(*layers)
+        self.num_layers = num_layers
         
         # スキップ接続用の線形層（入力と出力の次元が異なる場合）
         if in_channels != out_channels:
@@ -80,8 +121,8 @@ class MLPWithSkip(torch.nn.Module):
         Returns:
             torch.Tensor: 出力特徴量 [num_nodes, out_channels]
         """
-        # メインの線形変換
-        out = self.linear(x)
+        # メインのMLP処理
+        out = self.mlp(x)
         
         # スキップ接続
         if self.skip_linear is not None:
@@ -91,8 +132,5 @@ class MLPWithSkip(torch.nn.Module):
         
         # スキップ接続を追加
         out = out + skip
-        
-        if self.dropout > 0:
-            out = F.dropout(out, p=self.dropout, training=self.training)
         
         return out 

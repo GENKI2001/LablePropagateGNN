@@ -124,7 +124,7 @@ def create_pca_features(data, device, pca_components=50, original_features=None)
 
     return data, pca_features, pca
 
-def create_label_features(data, device, max_hops=2, exclude_test_labels=True, use_neighbor_label_features=True, temperature=1.0, label_smoothing=0.):
+def create_label_features(data, device, max_hops=2, calc_neighbor_label_features=True, temperature=1.0, label_smoothing=0.):
     print(f"現在の特徴量の形状: {data.x.shape}")
 
     # ワンホットエンコーディングの作成
@@ -134,21 +134,8 @@ def create_label_features(data, device, max_hops=2, exclude_test_labels=True, us
     all_labels = data.y.cpu().numpy().reshape(-1, 1)
     one_hot_labels = encoder.transform(all_labels)
 
-    if exclude_test_labels:
-        one_hot_labels[~data.train_mask.cpu().numpy()] = 0
-    else:
-        unknown_mask = ~data.train_mask
-        if unknown_mask.sum() > 0:
-            original_classes = one_hot_labels.shape[1]
-            unknown_encoding = np.zeros((one_hot_labels.shape[0], original_classes + 1))
-            unknown_encoding[data.train_mask.cpu().numpy(), :original_classes] = one_hot_labels[data.train_mask.cpu().numpy()]
-            unknown_encoding[unknown_mask.cpu().numpy(), original_classes] = 1
-            one_hot_labels = unknown_encoding
-            print(f"Unknownクラスを追加: {original_classes} → {original_classes + 1} クラス")
-            print(f"テスト・検証ノード数: {unknown_mask.sum().item()}")
-            print(f"訓練ノード数: {data.train_mask.sum().item()}")
-        else:
-            print("テスト・検証ノードがないため、unknownクラスは追加しません")
+    # テスト・検証ノードのラベルを0に設定（常にTrueの動作）
+    one_hot_labels[~data.train_mask.cpu().numpy()] = 0
 
     # === ✅ ラベルスムージング適用 ===
     if label_smoothing > 0.0:
@@ -164,7 +151,7 @@ def create_label_features(data, device, max_hops=2, exclude_test_labels=True, us
     combined_features = data.x
     neighbor_label_features = None
 
-    if use_neighbor_label_features:
+    if calc_neighbor_label_features:
         print("隣接ノードのラベル特徴量を結合します")
         print(f"温度パラメータ: {temperature}")
         one_hot_labels_tensor = torch.tensor(one_hot_labels, dtype=torch.float32)
@@ -177,13 +164,29 @@ def create_label_features(data, device, max_hops=2, exclude_test_labels=True, us
         A = A.bool()
         A.fill_diagonal_(False)
 
-        prev_mask = A.clone()
+        # 各hopまでの到達可能性を追跡
+        reachable_nodes = torch.zeros((num_nodes, num_nodes), dtype=torch.bool)
+        
         for hop in range(1, max_hops + 1):
-            mask = prev_mask
+            if hop == 1:
+                # 1hop: 直接隣接ノードのみ
+                mask = A.clone()
+                reachable_nodes = mask.clone()
+            else:
+                # 2hop以上: 前のhopまでの到達可能性を除外
+                # 現在のhopで到達可能なノードを計算
+                current_reachable = torch.matmul(reachable_nodes.float(), A.float()).bool()
+                # 前のhopまでの到達可能性を除外
+                mask = current_reachable & (~reachable_nodes)
+                # 到達可能性を更新
+                reachable_nodes = reachable_nodes | current_reachable
+            
+            # 各ノードについて、そのhopで到達可能な隣接ノードのラベルを集約
             neighbor_labels = mask.float() @ one_hot_labels_tensor
             hop_features = F.softmax(neighbor_labels / temperature, dim=1)
             hop_features_list.append(hop_features)
-            prev_mask = torch.matmul(mask.float(), A.float()).bool()
+            
+            print(f"  {hop}hop: {mask.sum().item()}個の接続（前のhopを除外）")
 
         neighbor_label_features = torch.cat(hop_features_list, dim=1)
         combined_features = torch.cat([data.x, neighbor_label_features], dim=1)
@@ -193,10 +196,71 @@ def create_label_features(data, device, max_hops=2, exclude_test_labels=True, us
     else:
         print("隣接ノードのラベル特徴量は結合しません")
 
-    data.x = combined_features.to(device)
-    return data, adj_matrix, one_hot_labels, neighbor_label_features
+    return adj_matrix, one_hot_labels, neighbor_label_features
 
+def create_positional_random_walk_label_features(data, device, walk_length=4, use_train_only=True):
+    from torch_sparse import spmm
+    from torch_geometric.utils import add_self_loops, degree
 
+    num_nodes = data.num_nodes
+    y = data.y.cpu().numpy()
+
+    print(f"\n=== 順序付きランダムウォーク特徴量作成 ===")
+    print(f"ノード数: {num_nodes}")
+    print(f"ランダムウォーク長: {walk_length}")
+    print(f"訓練ノードのみ使用: {use_train_only}")
+
+    # === ラベルのワンホット化 ===
+    encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+    encoder.fit(y[data.train_mask.cpu().numpy()].reshape(-1, 1))
+    one_hot_labels = encoder.transform(y.reshape(-1, 1))
+    num_classes = one_hot_labels.shape[1]
+    print(f"クラス数: {num_classes}")
+    
+    one_hot_labels[~data.train_mask.cpu().numpy()] = 0
+    print(f"テスト・検証ノードのラベルを0に設定")
+    
+    Y = torch.tensor(one_hot_labels, dtype=torch.float32).to(device)  # [N, C]
+
+    # === 正規化隣接行列（スパース）を作成 ===
+    edge_index, _ = add_self_loops(data.edge_index)  # 自己ループあり
+    row, col = edge_index
+    deg = degree(row, num_nodes, dtype=torch.float32)  # 出次数
+    deg_inv = 1.0 / deg
+    deg_inv[deg_inv == float('inf')] = 0
+
+    norm = deg_inv[row]  # 転置なし (row-normalized)
+    A_hat = torch.sparse_coo_tensor(
+        indices=edge_index,
+        values=norm,
+        size=(num_nodes, num_nodes)
+    ).to(device)
+
+    print(f"正規化隣接行列作成完了: {A_hat.shape}")
+
+    # === 各 hop における伝播結果を記録 ===
+    H = Y
+    label_hops = []
+    print(f"\n各hopでの特徴量次元:")
+    for t in range(1, walk_length + 1):
+        H = torch.sparse.mm(A_hat, H)  # t-step伝播
+        label_hops.append(H)
+        print(f"  {t}hop: {H.shape[1]}次元 (クラス数: {num_classes})")
+
+    # === [N, walk_length, C] に変換して結合 ===
+    position_label_tensor = torch.stack(label_hops, dim=1)  # [N, T, C]
+    flattened = position_label_tensor.view(num_nodes, -1)   # [N, T*C]
+
+    print(f"\n=== ランダムウォーク特徴量の詳細 ===")
+    print(f"元の特徴量次元: {data.x.shape[1]}")
+    print(f"ランダムウォーク特徴量次元: {flattened.shape[1]}")
+    print(f"  - 各hop: {num_classes}次元 × {walk_length}hop = {num_classes * walk_length}次元")
+    print(f"  - テンソル形状: {position_label_tensor.shape} → 平坦化: {flattened.shape}")
+
+    # === data.x に結合 ===
+    original_x_shape = data.x.shape
+    
+    return position_label_tensor
 
 def compute_extended_structural_features(data, device,
                                          include_degree=True,
@@ -326,4 +390,151 @@ def compute_extended_structural_features(data, device,
     data.x = torch.cat([data.x, structural_features], dim=1)
 
     return data, structural_features
+
+def create_similarity_based_edges(features, threshold=0.5, device='cpu'):
+    """
+    特徴量のコサイン類似度に基づいて新しいエッジを作成する関数
+    
+    Args:
+        features (torch.Tensor): ノード特徴量 [num_nodes, feature_dim]（生の特徴量またはラベル分布特徴量など）
+        threshold (float): コサイン類似度の閾値（0.0-1.0）
+        device (str): 使用デバイス
+    
+    Returns:
+        torch.Tensor: 新しいエッジインデックス [2, num_new_edges]
+        torch.Tensor: 新しい隣接行列 [num_nodes, num_nodes]
+        int: 作成されたエッジ数
+    """
+    print(f"\n=== 類似度ベースエッジ作成 ===")
+    print(f"特徴量形状: {features.shape}")
+    print(f"類似度閾値: {threshold}")
+    
+    num_nodes = features.shape[0]
+    
+    # 特徴量を正規化（コサイン類似度計算のため）
+    features_normalized = F.normalize(features, p=2, dim=1)
+    
+    # 全ノード間のコサイン類似度を計算
+    similarity_matrix = torch.mm(features_normalized, features_normalized.t())
+    
+    # 対角成分（自己類似度）を0に設定
+    similarity_matrix.fill_diagonal_(0.0)
+    
+    # 閾値を超える類似度を持つペアを抽出
+    edge_mask = similarity_matrix > threshold
+    
+    # 上三角行列のみを考慮（重複を避けるため）
+    upper_triangle_mask = torch.triu(torch.ones_like(similarity_matrix), diagonal=1).bool()
+    edge_mask = edge_mask & upper_triangle_mask
+    
+    # エッジのインデックスを取得
+    edge_indices = torch.nonzero(edge_mask, as_tuple=False)
+    
+    # 双方向のエッジを作成（無向グラフのため）
+    if len(edge_indices) > 0:
+        # 元のエッジ
+        source_nodes = edge_indices[:, 0]
+        target_nodes = edge_indices[:, 1]
+        
+        # 逆方向のエッジ
+        reverse_source = target_nodes
+        reverse_target = source_nodes
+        
+        # 両方向を結合
+        all_source = torch.cat([source_nodes, reverse_source])
+        all_target = torch.cat([target_nodes, reverse_target])
+        
+        new_edge_index = torch.stack([all_source, all_target], dim=0)
+    else:
+        # エッジがない場合
+        new_edge_index = torch.empty((2, 0), dtype=torch.long, device=device)
+    
+    # 新しい隣接行列を作成
+    new_adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32, device=device)
+    if len(new_edge_index) > 0:
+        new_adj_matrix[new_edge_index[0], new_edge_index[1]] = 1.0
+    
+    num_new_edges = new_edge_index.shape[1] // 2 if len(new_edge_index) > 0 else 0
+    
+    print(f"作成されたエッジ数: {num_new_edges}")
+    print(f"新しいエッジインデックス形状: {new_edge_index.shape}")
+    print(f"新しい隣接行列形状: {new_adj_matrix.shape}")
+    
+    # 類似度の統計情報を表示
+    if len(similarity_matrix) > 0:
+        valid_similarities = similarity_matrix[upper_triangle_mask]
+        print(f"類似度統計:")
+        print(f"  平均: {valid_similarities.mean():.4f}")
+        print(f"  標準偏差: {valid_similarities.std():.4f}")
+        print(f"  最小値: {valid_similarities.min():.4f}")
+        print(f"  最大値: {valid_similarities.max():.4f}")
+        print(f"  閾値 {threshold} を超えるペア数: {edge_mask.sum().item()}")
+    
+    return new_edge_index, new_adj_matrix, num_new_edges
+
+
+def create_similarity_based_edges_with_original(original_edge_index, features, 
+                                              threshold=0.5, device='cpu', 
+                                              combine_with_original=True):
+    """
+    特徴量のコサイン類似度に基づいて新しいエッジを作成し、
+    元のエッジと結合する関数
+    
+    Args:
+        original_edge_index (torch.Tensor): 元のエッジインデックス [2, num_edges]
+        features (torch.Tensor): ノード特徴量 [num_nodes, feature_dim]（生の特徴量またはラベル分布特徴量など）
+        threshold (float): コサイン類似度の閾値（0.0-1.0）
+        device (str): 使用デバイス
+        combine_with_original (bool): 元のエッジと結合するかどうか
+    
+    Returns:
+        torch.Tensor: 結合されたエッジインデックス [2, num_total_edges]
+        torch.Tensor: 結合された隣接行列 [num_nodes, num_nodes]
+        int: 元のエッジ数
+        int: 新しく作成されたエッジ数
+        int: 総エッジ数
+    """
+    print(f"\n=== 類似度ベースエッジ作成（元エッジ結合） ===")
+    print(f"元のエッジ数: {original_edge_index.shape[1]}")
+    print(f"特徴量形状: {features.shape}")
+    print(f"類似度閾値: {threshold}")
+    print(f"元エッジと結合: {combine_with_original}")
+    
+    num_nodes = features.shape[0]
+    
+    # 新しいエッジを作成
+    new_edge_index, new_adj_matrix, num_new_edges = create_similarity_based_edges(
+        features, threshold, device
+    )
+    
+    if combine_with_original:
+        # 元のエッジと新しいエッジを結合
+        combined_edge_index = torch.cat([original_edge_index, new_edge_index], dim=1)
+        
+        # 重複エッジを除去（元のエッジと新しいエッジが重複する可能性）
+        edge_pairs = combined_edge_index.t()
+        unique_edges, inverse_indices = torch.unique(edge_pairs, dim=0, return_inverse=True)
+        combined_edge_index = unique_edges.t()
+        
+        # 結合された隣接行列を作成
+        combined_adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32, device=device)
+        combined_adj_matrix[combined_edge_index[0], combined_edge_index[1]] = 1.0
+        
+        num_original_edges = original_edge_index.shape[1]
+        num_total_edges = combined_edge_index.shape[1]
+        num_actual_new_edges = num_total_edges - num_original_edges
+        
+        print(f"結合結果:")
+        print(f"  元のエッジ数: {num_original_edges}")
+        print(f"  新しく追加されたエッジ数: {num_actual_new_edges}")
+        print(f"  総エッジ数: {num_total_edges}")
+        print(f"  エッジ増加率: {num_actual_new_edges / num_original_edges * 100:.2f}%")
+        
+        return combined_edge_index, combined_adj_matrix, num_original_edges, num_actual_new_edges, num_total_edges
+    else:
+        # 新しいエッジのみを返す
+        num_original_edges = original_edge_index.shape[1]
+        num_total_edges = new_edge_index.shape[1]
+        
+        return new_edge_index, new_adj_matrix, num_original_edges, num_new_edges, num_total_edges
 
