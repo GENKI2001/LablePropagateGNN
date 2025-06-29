@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
 from utils.feature_creator import create_pca_features, create_label_features, create_positional_random_walk_label_features, display_node_features, get_feature_info, create_similarity_based_edges, create_similarity_based_edges_with_original
-from utils.edge_sampler import sample_edges, print_sampling_statistics
+from utils.adjacency_creator import create_normalized_adjacency_matrices, get_adjacency_matrix, apply_adjacency_to_features, combine_hop_features, print_adjacency_info
 from models import ModelFactory
 
 # ============================================================================
@@ -73,13 +73,6 @@ RANDOM_WALK_NUM_WALKS = 100  # 各ノードから開始するランダムウォ�
 RANDOM_WALK_LENGTH = 4  # ランダムウォークの長さ
 RANDOM_WALK_USE_TRAIN_ONLY = True  # True: 訓練ノードのみを使用, False: 全ノードを使用
 
-# エッジサンプリング設定
-USE_EDGE_SAMPLING = False  # True: エッジサンプリングを実行, False: スキップ
-EDGE_SAMPLING_METHOD = 'random'  # 'random', 'degree', 'class', 'structural', 'adaptive'
-EDGE_SAMPLING_RATIO = 0.5  # サンプリングするエッジの割合 (0.0-1.0)
-EDGE_SAMPLING_STRATEGY = 'high_degree'  # 各手法の戦略
-EDGE_SAMPLING_ALPHA = 0.5  # 適応的サンプリングの重みパラメータ
-
 # 最適化設定
 LEARNING_RATE = 0.01  # 学習率
 WEIGHT_DECAY = 5e-4   # 重み減衰
@@ -115,36 +108,12 @@ else:
     print(f"\n=== PCA処理をスキップ ===")
     print(f"生の特徴量を使用します: {data.x.shape}")
 
-# エッジサンプリング処理を実行
-if USE_EDGE_SAMPLING:
-    print(f"\n=== エッジサンプリング処理 ===")
-    print(f"サンプリング手法: {EDGE_SAMPLING_METHOD}")
-    print(f"サンプリング比率: {EDGE_SAMPLING_RATIO}")
-    
-    # サンプリングパラメータを設定
-    sampling_kwargs = {}
-    if EDGE_SAMPLING_METHOD == 'degree':
-        sampling_kwargs['strategy'] = EDGE_SAMPLING_STRATEGY
-    elif EDGE_SAMPLING_METHOD == 'class':
-        sampling_kwargs['strategy'] = EDGE_SAMPLING_STRATEGY
-    elif EDGE_SAMPLING_METHOD == 'structural':
-        sampling_kwargs['strategy'] = EDGE_SAMPLING_STRATEGY
-    elif EDGE_SAMPLING_METHOD == 'adaptive':
-        sampling_kwargs['alpha'] = EDGE_SAMPLING_ALPHA
-    
-    # エッジサンプリングを実行
-    data, sampling_stats = sample_edges(
-        data, device, 
-        method=EDGE_SAMPLING_METHOD,
-        sampling_ratio=EDGE_SAMPLING_RATIO,
-        **sampling_kwargs
-    )
-    
-    # サンプリング統計を表示
-    print_sampling_statistics(sampling_stats)
-else:
-    print(f"\n=== エッジサンプリングをスキップ ===")
-    print(f"元のエッジを使用します: {data.edge_index.shape[1]} エッジ")
+# 隣接行列を作成
+adjacency_matrices = create_normalized_adjacency_matrices(data, device, max_hops=2)
+
+# 特定のhopの隣接行列を取得
+adj_1hop = get_adjacency_matrix(adjacency_matrices, 1)
+adj_2hop = get_adjacency_matrix(adjacency_matrices, 2)
 
 # モデル情報を取得
 model_info = ModelFactory.get_model_info(MODEL_NAME)
@@ -166,14 +135,6 @@ print(f"PCA使用: {USE_PCA}")
 print(f"元の特徴量無効化: {DISABLE_ORIGINAL_FEATURES}")
 print(f"隣接ノード特徴量使用: {USE_NEIGHBOR_LABEL_FEATURES}")
 print(f"隣接ノード特徴量結合: {COMBINE_NEIGHBOR_LABEL_FEATURES}")
-print(f"エッジサンプリング使用: {USE_EDGE_SAMPLING}")
-if USE_EDGE_SAMPLING:
-    print(f"サンプリング手法: {EDGE_SAMPLING_METHOD}")
-    print(f"サンプリング比率: {EDGE_SAMPLING_RATIO}")
-    if EDGE_SAMPLING_METHOD in ['degree', 'class', 'structural']:
-        print(f"サンプリング戦略: {EDGE_SAMPLING_STRATEGY}")
-    elif EDGE_SAMPLING_METHOD == 'adaptive':
-        print(f"適応的サンプリング重み: {EDGE_SAMPLING_ALPHA}")
 print(f"類似度ベースエッジ作成使用: {USE_SIMILARITY_BASED_EDGES}")
 if USE_SIMILARITY_BASED_EDGES:
     print(f"エッジモード: {SIMILARITY_EDGE_MODE}")
