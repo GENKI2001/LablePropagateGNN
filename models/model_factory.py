@@ -3,8 +3,6 @@ from torch_geometric.nn import LINKX
 from .gcn import GCN, GCNWithSkip
 from .gat import GAT, GATWithSkip, GATv2
 from .mlp import MLP, MLPWithSkip
-from .gsl_labeldist import GSLModel_LabelDistr
-from .trigsl import TriFeatureGSLGNN
 from .mlp_and_gcn import MLPAndGCNFusion, MLPAndGCNEnsemble, GCNAndMLPConcat
 from .h2gcn import H2GCN
 
@@ -20,7 +18,7 @@ class ModelFactory:
         モデルを作成する
         
         Args:
-            model_name (str): モデル名 ('GCN', 'GAT', 'GATv2', 'GSL', etc.)
+            model_name (str): モデル名 ('GCN', 'GAT', 'GATv2', etc.)
             in_channels (int): 入力特徴量の次元
             hidden_channels (int): 隠れ層の次元
             out_channels (int): 出力特徴量の次元
@@ -113,30 +111,6 @@ class ModelFactory:
                 dropout=default_params['dropout']
             )
         
-        elif model_name == 'GSL':
-            if default_params['num_nodes'] is None:
-                raise ValueError("GSL model requires 'num_nodes' parameter")
-            
-            # GSLモデルの追加パラメータ
-            model_type = kwargs.get('model_type', 'mlp')
-            num_layers = kwargs.get('num_layers', 2)
-            dropout = kwargs.get('dropout', 0.0)
-            damping_alpha = kwargs.get('damping_alpha', 0.8)
-            
-            return GSLModel_LabelDistr(
-                input_dim=in_channels,
-                hidden_dim=hidden_channels,
-                output_dim=out_channels,
-                num_nodes=default_params['num_nodes'],
-                num_classes=out_channels,
-                label_embed_dim=default_params['label_embed_dim'],
-                adj_init=default_params['adj_init'],
-                model_type=model_type,
-                num_layers=num_layers,
-                dropout=dropout,
-                damping_alpha=damping_alpha
-            )
-        
         elif model_name == 'LINKX':
             conv_type = kwargs.get('conv_type', 'gcn')
             use_batch_norm = kwargs.get('use_batch_norm', True)
@@ -150,34 +124,7 @@ class ModelFactory:
                 dropout=default_params['dropout'],
                 num_nodes=num_nodes
             )
-        
-        elif model_name == 'TriFeatureGSLGNN':
-            if default_params['num_nodes'] is None:
-                raise ValueError("TriFeatureGSLGNN model requires 'num_nodes' parameter")
-            
-            # 結合次元が指定されていない場合は計算
-            combined_dim = kwargs.get('combined_dim', None)
-            input_dim_struct = kwargs.get('input_dim_struct', 1)  # デフォルトは1
-            if combined_dim is None:
-                label_dist_dim = 4 * out_channels  # max_hops=4を仮定
-                combined_dim = in_channels + input_dim_struct + label_dist_dim
-            
-            return TriFeatureGSLGNN(
-                input_dim_pca=in_channels,
-                input_dim_struct=input_dim_struct,
-                hidden_dim=hidden_channels,
-                output_dim=out_channels,
-                num_nodes=default_params['num_nodes'],
-                num_classes=out_channels,
-                adj_init=default_params['adj_init'],
-                model_type=kwargs.get('model_type', 'hybrid'),
-                num_layers=default_params['num_layers'],
-                dropout=default_params['dropout'],
-                damping_alpha=kwargs.get('damping_alpha', 0.3),
-                adj_init_strength=kwargs.get('adj_init_strength', 0.9),
-                combined_dim=combined_dim
-            )
-        
+       
         # MLP-GCNハイブリッドモデル
         elif model_name == 'MLPAndGCNFusion':
             fusion_method = kwargs.get('fusion_method', 'concat')
@@ -281,19 +228,9 @@ class ModelFactory:
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
             },
-            'GSL': {
-                'description': 'Graph Structure Learning Model (supports MLP and GCN classifiers)',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_nodes', 'label_embed_dim', 'adj_init', 'model_type', 'num_layers', 'dropout'],
-                'default_hidden_channels': 16
-            },
             'LINKX': {
                 'description': 'LINKX model',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
-                'default_hidden_channels': 16
-            },
-            'TriFeatureGSLGNN': {
-                'description': 'Triple Feature Graph Structure Learning Model (MLP + GCN + LINKX)',
-                'parameters': ['input_dim', 'hidden_dim', 'output_dim', 'num_nodes', 'num_classes', 'label_embed_dim', 'adj_init', 'model_type', 'num_layers', 'dropout', 'damping_alpha', 'adj_init_strength'],
                 'default_hidden_channels': 16
             },
             'MLPAndGCNFusion': {
@@ -328,4 +265,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'GSL', 'LINKX', 'TriFeatureGSLGNN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN'] 
+        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'LINKX', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN'] 
