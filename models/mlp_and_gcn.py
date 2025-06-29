@@ -290,168 +290,95 @@ class MLPAndGCNSerial(nn.Module):
 
 class MLPAndGCNEnsemble(nn.Module):
     """
-    MLPとGCNを独立に実行し、アンサンブルするモデル
-    
-    Args:
-        in_channels (int): 入力特徴量の次元
-        hidden_channels (int): 隠れ層の次元
-        out_channels (int): 出力特徴量の次元
-        num_layers (int): 各モデルのレイヤー数（デフォルト: 2）
-        dropout (float): ドロップアウト率（デフォルト: 0.0）
-        ensemble_method (str): アンサンブル方法 ('average', 'weighted', 'voting', 'concat_alpha')
+    y = Classifier(α * GCN(Xfeat, A) + (1 - α) * MLP([Ydist, Xfeat]))
     """
-    
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers=2, 
-                 dropout=0.0, ensemble_method='weighted'):
+
+    def __init__(self,
+                 xfeat_dim,
+                 ydist_dim,
+                 hidden_channels,
+                 out_channels,
+                 num_layers=2,
+                 dropout=0.0):
         super(MLPAndGCNEnsemble, self).__init__()
-        self.ensemble_method = ensemble_method
-        
-        # GCNモデル
-        self.gcn = GCN(in_channels, hidden_channels, out_channels, num_layers, dropout)
-        
-        # MLPモデル
-        self.mlp = MLP(in_channels, hidden_channels, out_channels, num_layers, dropout)
-        
-        # 重み付きアンサンブル用の重み
-        if ensemble_method == 'weighted':
-            self.gcn_weight = nn.Parameter(torch.tensor(0.5))
-            self.mlp_weight = nn.Parameter(torch.tensor(0.5))
-        elif ensemble_method == 'concat_alpha':
-            # αの学習可能パラメータを追加（β = 1-α）
-            self.alpha = nn.Parameter(torch.tensor(0.5))  # GCNの重み
-        
-    def forward(self, x, edge_index):
-        # 各モデルの出力を取得
-        gcn_out = self.gcn(x, edge_index)
-        mlp_out = self.mlp(x, edge_index)
-        
-        # アンサンブル
-        if self.ensemble_method == 'average':
-            out = (gcn_out + mlp_out) / 2
-        elif self.ensemble_method == 'weighted':
-            # 重みを正規化
-            total_weight = self.gcn_weight + self.mlp_weight
-            gcn_weight_norm = self.gcn_weight / total_weight
-            mlp_weight_norm = self.mlp_weight / total_weight
-            out = gcn_weight_norm * gcn_out + mlp_weight_norm * mlp_out
-        elif self.ensemble_method == 'voting':
-            # ソフトマックスを適用してから平均
-            gcn_probs = F.softmax(gcn_out, dim=1)
-            mlp_probs = F.softmax(mlp_out, dim=1)
-            out = (gcn_probs + mlp_probs) / 2
-        elif self.ensemble_method == 'concat_alpha':
-            # αと1-αで重み付き加算
-            alpha = torch.clamp(self.alpha, 0, 1)
-            beta = 1 - alpha
-            out = alpha * gcn_out + beta * mlp_out
-        
-        return out
-    
-    def get_alpha(self):
-        """
-        αの値を取得する
-        
-        Returns:
-            float: αの値（0-1の範囲）、適用できない場合はNone
-        """
-        if self.ensemble_method == 'weighted':
-            total_weight = self.gcn_weight + self.mlp_weight
-            return (self.gcn_weight / total_weight).item()
-        elif self.ensemble_method == 'concat_alpha':
-            return torch.clamp(self.alpha, 0, 1).item()
-        return None
-    
-    def get_beta(self):
-        """
-        βの値を取得する（concat_alphaアンサンブルの場合のみ）
-        
-        Returns:
-            float: βの値（0-1の範囲）、適用できない場合はNone
-        """
-        if self.ensemble_method == 'concat_alpha':
-            return torch.clamp(1 - self.alpha, 0, 1).item()
-        return None
-    
-    def get_alpha_info(self):
-        """
-        αと1-αの詳細情報を取得する
-        
-        Returns:
-            dict: αと1-αの値と特徴量の重み情報
-        """
-        if self.ensemble_method == 'weighted':
-            total_weight = self.gcn_weight + self.mlp_weight
-            gcn_weight_norm = (self.gcn_weight / total_weight).item()
-            mlp_weight_norm = (self.mlp_weight / total_weight).item()
-            return {
-                'alpha': gcn_weight_norm,
-                'beta': None,
-                'gcn_weight': gcn_weight_norm,
-                'mlp_weight': mlp_weight_norm,
-                'gcn_name': 'GCN Model',
-                'mlp_name': 'MLP Model',
-                'ensemble_method': self.ensemble_method
-            }
-        elif self.ensemble_method == 'concat_alpha':
-            alpha_val = torch.clamp(self.alpha, 0, 1).item()
-            beta_val = torch.clamp(1 - self.alpha, 0, 1).item()
-            return {
-                'alpha': alpha_val,
-                'beta': beta_val,
-                'gcn_weight': alpha_val,
-                'mlp_weight': beta_val,
-                'gcn_name': 'GCN Model',
-                'mlp_name': 'MLP Model',
-                'ensemble_method': self.ensemble_method
-            }
-        else:
-            return {
-                'alpha': None,
-                'beta': None,
-                'ensemble_method': self.ensemble_method,
-                'gcn_name': 'GCN Model',
-                'mlp_name': 'MLP Model'
-            }
-    
-    def print_alpha_info(self):
-        """
-        αと1-αの情報をコンソールに表示する
-        """
-        info = self.get_alpha_info()
-        print(f"=== MLPAndGCNEnsemble Alpha/(1-α) Information ===")
-        print(f"Ensemble method: {info['ensemble_method']}")
-        if info['alpha'] is not None:
-            print(f"Alpha value (GCN weight): {info['alpha']:.4f}")
-            if info['beta'] is not None:
-                print(f"(1-α) value (MLP weight): {info['beta']:.4f}")
-            else:
-                print(f"MLP weight: {info['mlp_weight']:.4f}")
-            print(f"GCN weight ({info['gcn_name']}): {info['gcn_weight']:.4f}")
-            print(f"MLP weight ({info['mlp_name']}): {info['mlp_weight']:.4f}")
-        else:
-            print(f"Alpha/(1-α) not applicable for {info['ensemble_method']} ensemble")
-        print("=" * 50)
-
-
-# 簡易的なGCNとMLPクラス（アンサンブル用）
-class GCN(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers=2, dropout=0.0):
-        super(GCN, self).__init__()
+        assert num_layers >= 1, "num_layers must be >= 1"
         self.num_layers = num_layers
         self.dropout = dropout
-        
-        self.convs = nn.ModuleList()
-        self.convs.append(GCNConv(in_channels, hidden_channels))
-        for _ in range(num_layers - 2):
-            self.convs.append(GCNConv(hidden_channels, hidden_channels))
-        if num_layers > 1:
-            self.convs.append(GCNConv(hidden_channels, out_channels))
-    
-    def forward(self, x, edge_index):
-        for i, conv in enumerate(self.convs):
-            x = conv(x, edge_index)
-            if i < len(self.convs) - 1:
-                x = F.relu(x)
+
+        # === GCN 部分 ===
+        self.gcn_layers = nn.ModuleList()
+        if num_layers == 1:
+            self.gcn_layers.append(GCNConv(xfeat_dim, hidden_channels))
+        else:
+            self.gcn_layers.append(GCNConv(xfeat_dim, hidden_channels))
+            for _ in range(num_layers - 2):
+                self.gcn_layers.append(GCNConv(hidden_channels, hidden_channels))
+            self.gcn_layers.append(GCNConv(hidden_channels, hidden_channels))
+
+        # === MLP 部分 ===
+        self.mlp_layers = nn.ModuleList()
+        if num_layers == 1:
+            self.mlp_layers.append(nn.Linear(ydist_dim, hidden_channels))
+        else:
+            self.mlp_layers.append(nn.Linear(ydist_dim, hidden_channels))
+            for _ in range(num_layers - 2):
+                self.mlp_layers.append(nn.Linear(hidden_channels, hidden_channels))
+            self.mlp_layers.append(nn.Linear(hidden_channels, hidden_channels))
+
+        # アンサンブル重み
+        self.alpha = nn.Parameter(torch.tensor(0.5))
+
+        # 最終分類器
+        self.classifier = nn.Sequential(
+            nn.ReLU(),
+            nn.Dropout(p=dropout),
+            nn.Linear(hidden_channels, out_channels)
+        )
+
+    def forward(self, x_feat, y_dist, edge_index):
+        # === GCN Forward ===
+        h_gcn = x_feat
+        for i, layer in enumerate(self.gcn_layers):
+            h_gcn = layer(h_gcn, edge_index)
+            if i < len(self.gcn_layers) - 1:
+                h_gcn = F.relu(h_gcn)
                 if self.dropout > 0:
-                    x = F.dropout(x, p=self.dropout, training=self.training)
-        return x
+                    h_gcn = F.dropout(h_gcn, p=self.dropout, training=self.training)
+
+        # === MLP Forward ===
+        h_mlp = y_dist
+        for i, layer in enumerate(self.mlp_layers):
+            h_mlp = layer(h_mlp)
+            if i < len(self.mlp_layers) - 1:
+                h_mlp = F.relu(h_mlp)
+                if self.dropout > 0:
+                    h_mlp = F.dropout(h_mlp, p=self.dropout, training=self.training)
+
+        # === アンサンブル ===
+        alpha = torch.clamp(self.alpha, 0, 1)
+        beta = 1 - alpha
+        fused = alpha * h_gcn + beta * h_mlp
+
+        # === 最終分類 ===
+        out = self.classifier(fused)
+        return out
+
+    def get_alpha_info(self):
+        alpha_val = torch.clamp(self.alpha, 0, 1).item()
+        beta_val = 1 - alpha_val
+        return {
+            'alpha': alpha_val,
+            'beta': beta_val,
+            'gcn_weight': alpha_val,
+            'mlp_weight': beta_val,
+            'gcn_name': 'GCN Features',
+            'mlp_name': 'MLP Features',
+            'fusion_method': 'ensemble'
+        }
+
+    def print_alpha_info(self):
+        info = self.get_alpha_info()
+        print("=== MLPAndGCNEnsemble Fusion Weights ===")
+        print(f"α (GCN weight): {info['alpha']:.4f}")
+        print(f"(1-α) (MLP weight): {info['beta']:.4f}")
+        print("=========================================")
