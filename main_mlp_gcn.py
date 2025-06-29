@@ -16,7 +16,7 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Citeseer'  # ここを変更してデータセットを切り替え
 
 # モデル選択（MLPまたはGCN）
 # サポートされているモデル:
@@ -25,7 +25,8 @@ DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
 # - 'MLPAndGCNFusion': MLP-GCN Fusion Model (MLPとGCNを並列実行し融合)
 # - 'MLPAndGCNEnsemble': MLP-GCN Ensemble Model (MLPとGCNを独立実行しアンサンブル)
 # - 'GCNAndMLPConcat': GCN-MLP Concat Model (GCNで生の特徴量、MLPで生の特徴量+ラベル分布特徴量を処理)
-MODEL_NAME = 'GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat')
+# - 'H2GCN': H2GCN Model (1-hopと2-hopの隣接行列を使用してグラフ構造を学習)
+MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN')
 
 # 実験設定
 NUM_RUNS = 10  # 実験回数
@@ -37,21 +38,21 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 6       # 最大hop数（1, 2, 3, ...）
-CALC_NEIGHBOR_LABEL_FEATURES = False  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
-COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
-TEMPERATURE = 1.0  # 温度パラメータ
-DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
+MAX_HOPS = 3       # 最大hop数（1, 2, 3, ...）
+CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
+COMBINE_NEIGHBOR_LABEL_FEATURES = True  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
+TEMPERATURE = 2.0  # 温度パラメータ
+DISABLE_ORIGINAL_FEATURES = True  # True: 元のノード特徴量を無効化（data.xを空にする）
 
 # 類似度ベースエッジ作成設定
-USE_SIMILARITY_BASED_EDGES = True  # True: 類似度ベースエッジ作成を実行, False: スキップ
+USE_SIMILARITY_BASED_EDGES = False  # True: 類似度ベースエッジ作成を実行, False: スキップ
 SIMILARITY_EDGE_MODE = 'add'  # 'replace': 元のエッジを置き換え, 'add': 元のエッジに追加
 SIMILARITY_FEATURE_TYPE = 'raw'  # 'raw': 生の特徴量のみ, 'label': ラベル分布特徴量のみ
 SIMILARITY_RAW_THRESHOLD = 0.165  # 生の特徴量の類似度閾値 (0.0-1.0)
 SIMILARITY_LABEL_THRESHOLD = 0.9999997  # ラベル分布特徴量の類似度閾値 (0.0-1.0)
 
 # モデルハイパーパラメータ
-HIDDEN_CHANNELS = 32  # 隠れ層の次元
+HIDDEN_CHANNELS = 64  # 隠れ層の次元
 NUM_LAYERS = 2        # レイヤー数
 DROPOUT = 0.5         # ドロップアウト率
 
@@ -178,6 +179,10 @@ elif MODEL_NAME == 'GCNAndMLPConcat':
     print(f"GCNAndMLPConcatモデル作成: GCNで生の特徴量、MLPで生の特徴量+ラベル分布特徴量を処理")
     print(f"GCN隠れ層次元: {GCN_HIDDEN_DIM}")
     print(f"MLP隠れ層次元: {MLP_HIDDEN_DIM}")
+elif MODEL_NAME == 'H2GCN':
+    print(f"H2GCNモデル作成: 1-hopと2-hopの隣接行列を使用してグラフ構造を学習")
+    print(f"1-hop隣接行列: {data.adj_1hop.shape}")
+    print(f"2-hop隣接行列: {data.adj_2hop.shape}")
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
 
@@ -364,8 +369,11 @@ for run in range(NUM_RUNS):
         model.train()
         optimizer.zero_grad()
         
+        # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+        if MODEL_NAME == 'H2GCN':
+            out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
         # GCNAndMLPConcatの場合は特別な処理
-        if MODEL_NAME == 'GCNAndMLPConcat':
+        elif MODEL_NAME == 'GCNAndMLPConcat':
             # 生の特徴量とラベル分布特徴量を分離
             if USE_PCA:
                 raw_features = run_data.x[:, :PCA_COMPONENTS]
@@ -406,8 +414,11 @@ for run in range(NUM_RUNS):
     def test():
         model.eval()
         
+        # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+        if MODEL_NAME == 'H2GCN':
+            out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
         # GCNAndMLPConcatの場合は特別な処理
-        if MODEL_NAME == 'GCNAndMLPConcat':
+        elif MODEL_NAME == 'GCNAndMLPConcat':
             # 生の特徴量とラベル分布特徴量を分離
             if USE_PCA:
                 raw_features = run_data.x[:, :PCA_COMPONENTS]
