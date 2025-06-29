@@ -124,7 +124,7 @@ def create_pca_features(data, device, pca_components=50, original_features=None)
 
     return data, pca_features, pca
 
-def create_label_features(data, device, max_hops=2, exclude_test_labels=True, use_neighbor_label_features=True, temperature=1.0, label_smoothing=0.):
+def create_label_features(data, device, max_hops=2, use_neighbor_label_features=True, temperature=1.0, label_smoothing=0.):
     print(f"現在の特徴量の形状: {data.x.shape}")
 
     # ワンホットエンコーディングの作成
@@ -134,21 +134,8 @@ def create_label_features(data, device, max_hops=2, exclude_test_labels=True, us
     all_labels = data.y.cpu().numpy().reshape(-1, 1)
     one_hot_labels = encoder.transform(all_labels)
 
-    if exclude_test_labels:
-        one_hot_labels[~data.train_mask.cpu().numpy()] = 0
-    else:
-        unknown_mask = ~data.train_mask
-        if unknown_mask.sum() > 0:
-            original_classes = one_hot_labels.shape[1]
-            unknown_encoding = np.zeros((one_hot_labels.shape[0], original_classes + 1))
-            unknown_encoding[data.train_mask.cpu().numpy(), :original_classes] = one_hot_labels[data.train_mask.cpu().numpy()]
-            unknown_encoding[unknown_mask.cpu().numpy(), original_classes] = 1
-            one_hot_labels = unknown_encoding
-            print(f"Unknownクラスを追加: {original_classes} → {original_classes + 1} クラス")
-            print(f"テスト・検証ノード数: {unknown_mask.sum().item()}")
-            print(f"訓練ノード数: {data.train_mask.sum().item()}")
-        else:
-            print("テスト・検証ノードがないため、unknownクラスは追加しません")
+    # テスト・検証ノードのラベルを0に設定（常にTrueの動作）
+    one_hot_labels[~data.train_mask.cpu().numpy()] = 0
 
     # === ✅ ラベルスムージング適用 ===
     if label_smoothing > 0.0:

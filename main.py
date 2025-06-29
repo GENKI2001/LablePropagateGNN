@@ -36,7 +36,6 @@ TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
 MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
-EXCLUDE_TEST_LABELS = True  # テスト・検証ノードのラベルを隣接ノードの特徴量計算から除外するか(Falseの場合はunknownラベルとして登録する)
 PCA_COMPONENTS = 128  # PCAで圧縮する次元数
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
 USE_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を結合, False: 結合しない
@@ -172,7 +171,6 @@ print(f"実験回数: {NUM_RUNS}")
 print(f"エポック数: {NUM_EPOCHS}")
 print(f"データ分割: 訓練={TRAIN_RATIO:.1%}, 検証={VAL_RATIO:.1%}, テスト={TEST_RATIO:.1%}")
 print(f"最大hop数: {MAX_HOPS}")
-print(f"テストラベル除外: {EXCLUDE_TEST_LABELS}")
 print(f"PCA圧縮次元数: {PCA_COMPONENTS}")
 print(f"PCA使用: {USE_PCA}")
 print(f"隣接ノード特徴量使用: {USE_NEIGHBOR_LABEL_FEATURES}")
@@ -235,8 +233,7 @@ for run in range(NUM_RUNS):
     
     # 実験中にラベル特徴量を作成
     run_data, adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
-        run_data, device, max_hops=MAX_HOPS, exclude_test_labels=EXCLUDE_TEST_LABELS, 
-        use_neighbor_label_features=USE_NEIGHBOR_LABEL_FEATURES
+        run_data, device, max_hops=MAX_HOPS, use_neighbor_label_features=USE_NEIGHBOR_LABEL_FEATURES
     )
 
     # 特徴量情報を取得
