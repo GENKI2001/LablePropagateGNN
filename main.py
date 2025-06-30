@@ -23,10 +23,11 @@ DATASET_NAME = 'Texas'  # ここを変更してデータセットを切り替え
 # サポートされているモデル:
 # - 'MLP': 1-layer Multi-Layer Perceptron (グラフ構造を無視)
 # - 'GCN': Graph Convolutional Network (グラフ構造を活用)
+# - 'GAT': Graph Attention Network (アテンション機構を使用したグラフ畳み込み)
 # - 'H2GCN': H2GCN Model (1-hopと2-hopの隣接行列を使用してグラフ構造を学習)
 # - 'MixHop': MixHop Model (異なるべき乗の隣接行列を混合してグラフ畳み込み)
 # - 'GraphSAGE': GraphSAGE Model (帰納的学習による大規模グラフ対応)
-MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', "GAT", 'H2GCN', 'MixHop', 'GraphSAGE')
+MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'GAT', 'H2GCN', 'MixHop', 'GraphSAGE')
 
 # 実験設定
 NUM_RUNS = 30  # 実験回数
@@ -71,6 +72,10 @@ MIXHOP_POWERS = [0, 1, 2]  # 隣接行列のべき乗のリスト [0, 1, 2] ま�
 
 # GraphSAGEモデル固有の設定
 GRAPHSAGE_AGGR = 'mean'  # 集約関数 ('mean', 'max', 'lstm')
+
+# GATモデル固有の設定
+GAT_NUM_HEADS = 8  # アテンションヘッド数
+GAT_CONCAT = True  # アテンションヘッドの出力を結合するかどうか
 
 # PCA設定
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
@@ -242,6 +247,10 @@ elif MODEL_NAME == 'MixHop':
 elif MODEL_NAME == 'GraphSAGE':
     print(f"GraphSAGEモデル作成: 帰納的学習による大規模グラフ対応")
     print(f"集約関数: {GRAPHSAGE_AGGR}")
+elif MODEL_NAME == 'GAT':
+    print(f"GATモデル作成: アテンション機構を使用したグラフ畳み込み")
+    print(f"アテンションヘッド数: {GAT_NUM_HEADS}")
+    print(f"ヘッド出力結合: {GAT_CONCAT}")
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
 print(f"Early Stopping使用: {USE_EARLY_STOPPING}")
@@ -414,6 +423,20 @@ if USE_GRID_SEARCH:
                 
                 print(f"  GraphSAGEモデル作成:")
                 print(f"    集約関数: {GRAPHSAGE_AGGR}")
+                print(f"    隠れ層次元: {default_hidden_channels}")
+                print(f"    レイヤー数: {NUM_LAYERS}")
+                print(f"    ドロップアウト: {DROPOUT}")
+            
+            # GATモデルの場合はアテンションヘッドパラメータを指定
+            elif MODEL_NAME == 'GAT':
+                model_kwargs.update({
+                    'num_heads': GAT_NUM_HEADS,
+                    'concat': GAT_CONCAT
+                })
+                
+                print(f"  GATモデル作成:")
+                print(f"    アテンションヘッド数: {GAT_NUM_HEADS}")
+                print(f"    ヘッド出力結合: {GAT_CONCAT}")
                 print(f"    隠れ層次元: {default_hidden_channels}")
                 print(f"    レイヤー数: {NUM_LAYERS}")
                 print(f"    ドロップアウト: {DROPOUT}")
@@ -776,6 +799,20 @@ else:
             
             print(f"  GraphSAGEモデル作成:")
             print(f"    集約関数: {GRAPHSAGE_AGGR}")
+            print(f"    隠れ層次元: {default_hidden_channels}")
+            print(f"    レイヤー数: {NUM_LAYERS}")
+            print(f"    ドロップアウト: {DROPOUT}")
+        
+        # GATモデルの場合はアテンションヘッドパラメータを指定
+        elif MODEL_NAME == 'GAT':
+            model_kwargs.update({
+                'num_heads': GAT_NUM_HEADS,
+                'concat': GAT_CONCAT
+            })
+            
+            print(f"  GATモデル作成:")
+            print(f"    アテンションヘッド数: {GAT_NUM_HEADS}")
+            print(f"    ヘッド出力結合: {GAT_CONCAT}")
             print(f"    隠れ層次元: {default_hidden_channels}")
             print(f"    レイヤー数: {NUM_LAYERS}")
             print(f"    ドロップアウト: {DROPOUT}")
