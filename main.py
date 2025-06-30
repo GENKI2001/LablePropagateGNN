@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
 from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info, create_similarity_based_edges, create_similarity_based_edges_with_original
-from utils.adjacency_creator import create_normalized_adjacency_matrices, get_adjacency_matrix, apply_adjacency_to_features, combine_hop_features, print_adjacency_info
+from utils.adjacency_creator import create_normalized_adjacency_matrices, get_adjacency_matrix, apply_adjacency_to_features, combine_hop_features, print_adjacency_info, make_undirected
 from utils.feature_noise import add_feature_noise, add_feature_noise_uniform, add_feature_noise_random, print_noise_info
 from models import ModelFactory
 
@@ -17,7 +17,7 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Texas'  # ここを変更してデータセットを切り替え
 
 # モデル選択（MLPまたはGCN）
 # サポートされているモデル:
@@ -26,7 +26,7 @@ DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替�
 # - 'H2GCN': H2GCN Model (1-hopと2-hopの隣接行列を使用してグラフ構造を学習)
 # - 'MixHop': MixHop Model (異なるべき乗の隣接行列を混合してグラフ畳み込み)
 # - 'GraphSAGE': GraphSAGE Model (帰納的学習による大規模グラフ対応)
-MODEL_NAME = 'MixHop'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'H2GCN', 'MixHop', 'GraphSAGE')
+MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', "GAT", 'H2GCN', 'MixHop', 'GraphSAGE')
 
 # 実験設定
 NUM_RUNS = 30  # 実験回数
@@ -38,7 +38,7 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 6       # 最大hop数（1, 2, 3, ...）
+MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
 CALC_NEIGHBOR_LABEL_FEATURES = False  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
 COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
 TEMPERATURE = 1.5  # 温度パラメータ
@@ -51,7 +51,7 @@ GRID_SEARCH_VALUES = [1, 2, 3, 4, 5, 6]  # Grid searchで試す値
 
 # 特徴量ノイズ追加設定
 USE_FEATURE_NOISE = False  # True: 特徴量にノイズを追加, False: スキップ
-NOISE_PERCENTAGE = 0.2  # ノイズを追加する特徴量の割合 (0.0-1.0) 
+NOISE_PERCENTAGE = 0.1  # ノイズを追加する特徴量の割合 (0.0-1.0) 
 NOISE_TYPE = 'per_node'  # 'uniform': 全ノードで同じ特徴量にノイズ, 'random': 各ノードで独立にノイズ, 'per_node': 各ノードでランダムに特徴量選択
 
 # 類似度ベースエッジ作成設定
@@ -98,6 +98,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # データセット読み込み
 data, dataset = load_dataset(DATASET_NAME, device)
+
+# エッジを無向グラフに修正
+data = make_undirected(data, device)
 
 # 元の特徴量を無効化する場合
 if DISABLE_ORIGINAL_FEATURES:

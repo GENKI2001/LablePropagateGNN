@@ -3,6 +3,38 @@ from torch_geometric.utils import add_self_loops, degree
 from torch_geometric.data import Data
 
 
+def make_undirected(data: Data, device: torch.device):
+    """
+    データオブジェクトのedge_indexを無向グラフに修正する関数
+    
+    Args:
+        data: PyTorch Geometricのデータオブジェクト
+        device: 計算デバイス
+    
+    Returns:
+        Data: 無向グラフに修正されたデータオブジェクト
+    """
+    print(f"=== エッジを無向グラフに修正 ===")
+    print(f"修正前のエッジ数: {data.edge_index.shape[1]}")
+    
+    # 無向グラフにするために、エッジの逆方向を追加
+    edge_index_undirected = torch.cat([
+        data.edge_index,
+        data.edge_index.flip(0)  # 逆方向のエッジを追加
+    ], dim=1)
+    
+    # 重複エッジを除去
+    edge_index_undirected = torch.unique(edge_index_undirected, dim=1)
+    
+    # データオブジェクトのedge_indexを更新
+    data.edge_index = edge_index_undirected.to(device)
+    
+    print(f"修正後のエッジ数: {data.edge_index.shape[1]}")
+    print(f"エッジ数増加: {data.edge_index.shape[1] - (data.edge_index.shape[1] // 2)}")
+    
+    return data
+
+
 def create_normalized_adjacency_matrices(data: Data, device: torch.device, max_hops: int = 2):
     """
     H2GCNスタイルの正規化された隣接行列を作成する関数
