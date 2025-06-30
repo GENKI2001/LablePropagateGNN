@@ -17,7 +17,7 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
 
 # モデル選択（MLPまたはGCN）
 # サポートされているモデル:
@@ -31,7 +31,7 @@ MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'G
 
 # 実験設定
 NUM_RUNS = 30  # 実験回数
-NUM_EPOCHS = 400  # エポック数
+NUM_EPOCHS = 600  # エポック数
 
 # データ分割設定
 TRAIN_RATIO = 0.6  # 訓練データの割合
@@ -59,7 +59,7 @@ SIMILARITY_LABEL_THRESHOLD = 0.9999997  # ラベル分布特徴量の類似度�
 
 # モデルハイパーパラメータ
 HIDDEN_CHANNELS = 64  # 隠れ層の次元
-NUM_LAYERS = 1        # レイヤー数
+NUM_LAYERS = 2        # レイヤー数
 DROPOUT = 0.5         # ドロップアウト率
 
 # GCNAndMLPConcatモデル固有の設定
@@ -77,6 +77,11 @@ PCA_COMPONENTS = 128  # PCAで圧縮する次元数結合後の特徴量の形�
 # 最適化設定
 LEARNING_RATE = 0.01  # 学習率
 WEIGHT_DECAY = 5e-4   # 重み減衰
+
+# Early Stopping設定
+USE_EARLY_STOPPING = True  # True: Early stoppingを使用, False: 使用しない
+EARLY_STOPPING_PATIENCE = 50  # 何エポック改善がなければ停止するか
+EARLY_STOPPING_MIN_DELTA = 0.001  # 改善とみなす最小変化量
 
 # 表示設定
 DISPLAY_PROGRESS_EVERY = 100  # 何エポックごとに進捗を表示するか
@@ -222,6 +227,10 @@ elif MODEL_NAME == 'H2GCN':
     print(f"2-hop隣接行列: {data.adj_2hop.shape}")
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
+print(f"Early Stopping使用: {USE_EARLY_STOPPING}")
+if USE_EARLY_STOPPING:
+    print(f"Early Stopping Patience: {EARLY_STOPPING_PATIENCE}")
+    print(f"Early Stopping Min Delta: {EARLY_STOPPING_MIN_DELTA}")
 
 # 結果を保存するリスト
 all_results = []
@@ -512,6 +521,12 @@ for run in range(NUM_RUNS):
     final_val_acc = 0
     final_test_acc = 0
     
+    # Early stopping用の変数
+    if USE_EARLY_STOPPING:
+        best_val_acc_for_early_stopping = 0
+        patience_counter = 0
+        early_stopped = False
+    
     for epoch in range(NUM_EPOCHS + 1):
         loss = train()
         train_acc, val_acc, test_acc = test()
@@ -520,6 +535,20 @@ for run in range(NUM_RUNS):
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_test_acc = test_acc
+        
+        # Early stoppingの処理
+        if USE_EARLY_STOPPING:
+            if val_acc > best_val_acc_for_early_stopping + EARLY_STOPPING_MIN_DELTA:
+                best_val_acc_for_early_stopping = val_acc
+                patience_counter = 0
+            else:
+                patience_counter += 1
+            
+            # Early stopping条件をチェック
+            if patience_counter >= EARLY_STOPPING_PATIENCE:
+                early_stopped = True
+                print(f"Early stopping triggered at epoch {epoch} (patience: {EARLY_STOPPING_PATIENCE})")
+                break
         
         # 最終結果を記録
         if epoch == NUM_EPOCHS:
@@ -538,7 +567,17 @@ for run in range(NUM_RUNS):
                 elif alpha_val is not None:
                     alpha_info = f", α={alpha_val:.4f}"
             
-            print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}')
+            early_stop_info = ""
+            if USE_EARLY_STOPPING:
+                early_stop_info = f", Patience: {patience_counter}/{EARLY_STOPPING_PATIENCE}"
+            
+            print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}{early_stop_info}')
+    
+    # Early stoppingで終了した場合の最終結果を記録
+    if USE_EARLY_STOPPING and early_stopped:
+        final_train_acc = train_acc
+        final_val_acc = val_acc
+        final_test_acc = test_acc
     
     # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値を表示
     if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
@@ -570,6 +609,13 @@ for run in range(NUM_RUNS):
     # ノイズ情報を保存（実験前のノイズ情報を使用）
     if USE_FEATURE_NOISE:
         run_result['noise_info'] = noise_info
+    
+    # Early stopping情報を保存
+    if USE_EARLY_STOPPING:
+        run_result['early_stopped'] = early_stopped
+        run_result['early_stopping_epoch'] = epoch if early_stopped else NUM_EPOCHS
+        run_result['early_stopping_patience'] = EARLY_STOPPING_PATIENCE
+        run_result['early_stopping_min_delta'] = EARLY_STOPPING_MIN_DELTA
     
     # MLPAndGCNFusion/MLPAndGCNEnsembleの場合はαとβ値も保存
     if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
@@ -663,13 +709,26 @@ for i, result in enumerate(all_results):
     if USE_FEATURE_NOISE and 'noise_info' in result and result['noise_info'] is not None:
         noise_info = f", ノイズ={result['noise_info'].get('noise_percentage', 0):.1%}"
     
-    print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{noise_info}")
+    early_stop_info = ""
+    if USE_EARLY_STOPPING and result.get('early_stopped', False):
+        early_stop_info = f", ES@{result.get('early_stopping_epoch', 'N/A')}"
+    
+    print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{noise_info}{early_stop_info}")
 
 print(f"\n=== 実験完了 ===")
 print(f"データセット: {DATASET_NAME}")
 print(f"モデル: {MODEL_NAME}")
 print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
 print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
+
+# Early stopping統計
+if USE_EARLY_STOPPING:
+    early_stopped_count = sum(1 for r in all_results if r.get('early_stopped', False))
+    early_stopping_epochs = [r.get('early_stopping_epoch', NUM_EPOCHS) for r in all_results]
+    print(f"Early Stopping統計:")
+    print(f"  早期停止した実験数: {early_stopped_count}/{NUM_RUNS} ({early_stopped_count/NUM_RUNS:.1%})")
+    print(f"  平均停止エポック: {np.mean(early_stopping_epochs):.1f} ± {np.std(early_stopping_epochs):.1f}")
+    print(f"  停止エポック範囲: [{min(early_stopping_epochs)}, {max(early_stopping_epochs)}]")
 
 # ノイズ情報の統計表示
 if USE_FEATURE_NOISE:
