@@ -2,10 +2,9 @@ import torch
 from torch_geometric.nn import LINKX
 from .gcn import GCN, GCNWithSkip
 from .gat import GAT, GATWithSkip, GATv2
-from .mlp import MLP, MLPWithSkip
-from .mlp_and_gcn import MLPAndGCNFusion, MLPAndGCNEnsemble, GCNAndMLPConcat
+from .mlp import MLP
 from .h2gcn import H2GCN
-from .mixhop import MixHop, MixHopWithSkip
+from .mixhop import MixHop
 
 class ModelFactory:
     """
@@ -103,15 +102,6 @@ class ModelFactory:
                 dropout=default_params['dropout']
             )
         
-        elif model_name == 'MLPWithSkip':
-            return MLPWithSkip(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-                num_layers=default_params['num_layers'],
-                dropout=default_params['dropout']
-            )
-        
         elif model_name == 'LINKX':
             conv_type = kwargs.get('conv_type', 'gcn')
             use_batch_norm = kwargs.get('use_batch_norm', True)
@@ -124,50 +114,6 @@ class ModelFactory:
                 num_layers=default_params['num_layers'],
                 dropout=default_params['dropout'],
                 num_nodes=num_nodes
-            )
-       
-        # MLP-GCNハイブリッドモデル
-        elif model_name == 'MLPAndGCNFusion':
-            fusion_method = kwargs.get('fusion_method', 'concat')
-            return MLPAndGCNFusion(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-                num_layers=default_params['num_layers'],
-                dropout=default_params['dropout'],
-                fusion_method=fusion_method
-            )
-        
-        elif model_name == 'MLPAndGCNEnsemble':
-            # MLPAndGCNEnsembleの場合は、xfeat_dimとydist_dimを別々に指定する必要がある
-            xfeat_dim = kwargs.get('xfeat_dim', in_channels)
-            ydist_dim = kwargs.get('ydist_dim', 0)
-            ensemble_method = kwargs.get('ensemble_method', 'weighted')
-            
-            return MLPAndGCNEnsemble(
-                xfeat_dim=xfeat_dim,
-                ydist_dim=ydist_dim,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-                num_layers=default_params['num_layers'],
-                dropout=default_params['dropout']
-            )
-        
-        elif model_name == 'GCNAndMLPConcat':
-            # GCNAndMLPConcatの場合は、xfeat_dimとxlabel_dimを別々に指定する必要がある
-            xfeat_dim = kwargs.get('xfeat_dim', in_channels)
-            xlabel_dim = kwargs.get('xlabel_dim', 0)
-            gcn_hidden_dim = kwargs.get('gcn_hidden_dim', None)
-            mlp_hidden_dim = kwargs.get('mlp_hidden_dim', None)
-            
-            return GCNAndMLPConcat(
-                xfeat_dim=xfeat_dim,
-                xlabel_dim=xlabel_dim,
-                hidden_dim=hidden_channels,
-                out_dim=out_channels,
-                dropout=default_params['dropout'],
-                gcn_hidden_dim=gcn_hidden_dim,
-                mlp_hidden_dim=mlp_hidden_dim
             )
         
         elif model_name == 'H2GCN':
@@ -182,17 +128,6 @@ class ModelFactory:
         elif model_name == 'MixHop':
             powers = kwargs.get('powers', [0, 1, 2])
             return MixHop(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-                num_layers=default_params['num_layers'],
-                dropout=default_params['dropout'],
-                powers=powers
-            )
-        
-        elif model_name == 'MixHopWithSkip':
-            powers = kwargs.get('powers', [0, 1, 2])
-            return MixHopWithSkip(
                 in_channels=in_channels,
                 hidden_channels=hidden_channels,
                 out_channels=out_channels,
@@ -246,29 +181,9 @@ class ModelFactory:
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
             },
-            'MLPWithSkip': {
-                'description': 'Multi-Layer Perceptron with Skip Connections',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
-                'default_hidden_channels': 16
-            },
             'LINKX': {
                 'description': 'LINKX model',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'dropout'],
-                'default_hidden_channels': 16
-            },
-            'MLPAndGCNFusion': {
-                'description': 'MLP-GCN Fusion Model',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'fusion_method'],
-                'default_hidden_channels': 16
-            },
-            'MLPAndGCNEnsemble': {
-                'description': 'MLP-GCN Ensemble Model',
-                'parameters': ['xfeat_dim', 'ydist_dim', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
-                'default_hidden_channels': 16
-            },
-            'GCNAndMLPConcat': {
-                'description': 'GCN-MLP Concat Model (GCN for raw features, MLP for raw+label features)',
-                'parameters': ['xfeat_dim', 'xlabel_dim', 'hidden_channels', 'out_channels', 'dropout', 'gcn_hidden_dim', 'mlp_hidden_dim'],
                 'default_hidden_channels': 16
             },
             'H2GCN': {
@@ -278,11 +193,6 @@ class ModelFactory:
             },
             'MixHop': {
                 'description': 'MixHop Model (mixes different powers of adjacency matrix)',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'powers'],
-                'default_hidden_channels': 16
-            },
-            'MixHopWithSkip': {
-                'description': 'MixHop Model with Skip Connections',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'powers'],
                 'default_hidden_channels': 16
             },
@@ -298,4 +208,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'MLPWithSkip', 'LINKX', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN', 'MixHop', 'MixHopWithSkip'] 
+        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'LINKX', 'H2GCN', 'MixHop'] 
