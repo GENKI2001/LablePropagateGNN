@@ -17,7 +17,7 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # モデル選択（MLPまたはGCN）
 # サポートされているモデル:
@@ -45,8 +45,13 @@ COMBINE_NEIGHBOR_LABEL_FEATURES = True  # True: 元の特徴量にラベル分�
 TEMPERATURE = 1.5  # 温度パラメータ
 DISABLE_ORIGINAL_FEATURES = True  # True: 元のノード特徴量を無効化（data.xを空にする）
 
+# Grid Search設定
+USE_GRID_SEARCH = True  # True: Grid searchを実行, False: 単一パラメータで実行
+GRID_SEARCH_PARAM = 'MAX_HOPS'  # Grid search対象パラメータ
+GRID_SEARCH_VALUES = [1, 2, 3, 4, 5, 6]  # Grid searchで試す値
+
 # 特徴量ノイズ追加設定
-USE_FEATURE_NOISE = True  # True: 特徴量にノイズを追加, False: スキップ
+USE_FEATURE_NOISE = False  # True: 特徴量にノイズを追加, False: スキップ
 NOISE_PERCENTAGE = 0.2  # ノイズを追加する特徴量の割合 (0.0-1.0) 
 NOISE_TYPE = 'per_node'  # 'uniform': 全ノードで同じ特徴量にノイズ, 'random': 各ノードで独立にノイズ, 'per_node': 各ノードでランダムに特徴量選択
 
@@ -58,8 +63,8 @@ SIMILARITY_RAW_THRESHOLD = 0.165  # 生の特徴量の類似度閾値 (0.0-1.0)
 SIMILARITY_LABEL_THRESHOLD = 0.9999997  # ラベル分布特徴量の類似度閾値 (0.0-1.0)
 
 # モデルハイパーパラメータ
-HIDDEN_CHANNELS = 64  # 隠れ層の次元
-NUM_LAYERS = 2        # レイヤー数
+HIDDEN_CHANNELS = 12  # 隠れ層の次元
+NUM_LAYERS = 1        # レイヤー数
 DROPOUT = 0.5         # ドロップアウト率
 
 # GCNAndMLPConcatモデル固有の設定
@@ -196,6 +201,12 @@ print(f"PCA使用: {USE_PCA}")
 print(f"元の特徴量無効化: {DISABLE_ORIGINAL_FEATURES}")
 print(f"隣接ノードラベル特徴量計算: {CALC_NEIGHBOR_LABEL_FEATURES}")
 print(f"隣接ノード特徴量結合: {COMBINE_NEIGHBOR_LABEL_FEATURES}")
+print(f"Grid Search使用: {USE_GRID_SEARCH}")
+if USE_GRID_SEARCH:
+    print(f"Grid Search対象パラメータ: {GRID_SEARCH_PARAM}")
+    print(f"Grid Search値: {GRID_SEARCH_VALUES}")
+else:
+    print(f"単一パラメータ実行: {GRID_SEARCH_PARAM} = {MAX_HOPS}")
 print(f"特徴量ノイズ追加使用: {USE_FEATURE_NOISE}")
 if USE_FEATURE_NOISE:
     print(f"ノイズ割合: {NOISE_PERCENTAGE:.1%}")
@@ -235,425 +246,987 @@ if USE_EARLY_STOPPING:
 # 結果を保存するリスト
 all_results = []
 
-# 実験実行
-for run in range(NUM_RUNS):
-    print(f"\n=== 実験 {run + 1}/{NUM_RUNS} ===")
+# Grid Search実行
+if USE_GRID_SEARCH:
+    print(f"\n=== Grid Search開始 ===")
+    print(f"対象パラメータ: {GRID_SEARCH_PARAM}")
+    print(f"試行値: {GRID_SEARCH_VALUES}")
+    print(f"総実験数: {len(GRID_SEARCH_VALUES)} × {NUM_RUNS} = {len(GRID_SEARCH_VALUES) * NUM_RUNS}")
     
-    # 各実験で独立したデータ分割を作成
-    run_data = data.clone()
+    grid_search_results = {}
     
-    # ランダムなデータ分割を作成
-    num_nodes = run_data.num_nodes
-    indices = torch.randperm(num_nodes)
-    
-    # データ分割サイズを計算
-    train_size = int(TRAIN_RATIO * num_nodes)
-    val_size = int(VAL_RATIO * num_nodes)
-    
-    # 新しいマスクを作成
-    run_data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    run_data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    run_data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    
-    run_data.train_mask[indices[:train_size]] = True
-    run_data.val_mask[indices[train_size:train_size + val_size]] = True
-    run_data.test_mask[indices[train_size + val_size:]] = True
-    
-    print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
-    
-    # 実験中にラベル特徴量を作成
-    adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
-        run_data, device, max_hops=MAX_HOPS, calc_neighbor_label_features=CALC_NEIGHBOR_LABEL_FEATURES,
-        temperature=TEMPERATURE
-    )
-
-    # 隣接ノードのラベル特徴量を結合
-    if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
-        print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
+    for param_value in GRID_SEARCH_VALUES:
+        print(f"\n{'='*60}")
+        print(f"=== {GRID_SEARCH_PARAM} = {param_value} ===")
+        print(f"{'='*60}")
         
-        # 通常の結合
-        if COMBINE_NEIGHBOR_LABEL_FEATURES:
-            run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
-        print(f"  結合後の特徴量形状: {run_data.x.shape}")
-
-    # 生の特徴量類似度ベースエッジを必要に応じて結合
-    if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw' and hasattr(data, 'raw_similarity_edge_index'):
-        print(f"  類似度ベースエッジを結合中...")
-        print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+        # パラメータ値を設定
+        if GRID_SEARCH_PARAM == 'MAX_HOPS':
+            current_max_hops = param_value
+        else:
+            current_max_hops = MAX_HOPS
         
-        if SIMILARITY_EDGE_MODE == 'replace':
-            # 元のエッジを類似度ベースエッジで置き換え
-            original_edge_count = run_data.edge_index.shape[1]
-            run_data.edge_index = data.raw_similarity_edge_index.clone()
-            print(f"    元のエッジを類似度ベースエッジで置き換え: {original_edge_count} → {data.raw_num_similarity_edges}")
+        # このパラメータ値での実験結果を保存するリスト
+        param_results = []
+        
+        # 実験実行
+        for run in range(NUM_RUNS):
+            print(f"\n=== 実験 {run + 1}/{NUM_RUNS} ({GRID_SEARCH_PARAM}={param_value}) ===")
             
-        elif SIMILARITY_EDGE_MODE == 'add':
-            # 元のエッジに類似度ベースエッジを追加
-            original_edge_count = run_data.edge_index.shape[1]
-            # 元のエッジと類似度ベースエッジを結合
-            combined_edge_index = torch.cat([run_data.edge_index, data.raw_similarity_edge_index], dim=1)
-            # 重複エッジを除去
-            edge_pairs = combined_edge_index.t()
-            unique_edges, _ = torch.unique(edge_pairs, dim=0, return_inverse=True)
-            run_data.edge_index = unique_edges.t()
-            final_edge_count = run_data.edge_index.shape[1]
-            print(f"    元のエッジに類似度ベースエッジを追加: {original_edge_count} + {data.raw_num_similarity_edges} → {final_edge_count}")
-        
-        print(f"  エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
-
-    # ラベル分布特徴量類似度ベースエッジを必要に応じて結合
-    if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is not None:
-        print(f"  ラベル分布特徴量類似度ベースエッジを結合中...")
-        print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
-        print(f"    ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
-        
-        # ラベル分布特徴量で類似度ベースエッジを作成
-        if SIMILARITY_EDGE_MODE == 'replace':
-            # 元のエッジをラベル分布特徴量ベースエッジで置き換え
-            original_edge_count = run_data.edge_index.shape[1]
-            label_edge_index, label_adj_matrix, num_label_edges = create_similarity_based_edges(
-                neighbor_label_features, threshold=SIMILARITY_LABEL_THRESHOLD, device=device
+            # 各実験で独立したデータ分割を作成
+            run_data = data.clone()
+            
+            # ランダムなデータ分割を作成
+            num_nodes = run_data.num_nodes
+            indices = torch.randperm(num_nodes)
+            
+            # データ分割サイズを計算
+            train_size = int(TRAIN_RATIO * num_nodes)
+            val_size = int(VAL_RATIO * num_nodes)
+            
+            # 新しいマスクを作成
+            run_data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+            run_data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+            run_data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+            
+            run_data.train_mask[indices[:train_size]] = True
+            run_data.val_mask[indices[train_size:train_size + val_size]] = True
+            run_data.test_mask[indices[train_size + val_size:]] = True
+            
+            print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
+            
+            # 実験中にラベル特徴量を作成
+            adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
+                run_data, device, max_hops=current_max_hops, calc_neighbor_label_features=CALC_NEIGHBOR_LABEL_FEATURES,
+                temperature=TEMPERATURE
             )
-            run_data.edge_index = label_edge_index
-            print(f"    元のエッジをラベル分布特徴量ベースエッジで置き換え: {original_edge_count} → {num_label_edges}")
-            
-        elif SIMILARITY_EDGE_MODE == 'add':
-            # 元のエッジにラベル分布特徴量ベースエッジを追加
-            original_edge_count = run_data.edge_index.shape[1]
-            combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
-                run_data.edge_index, neighbor_label_features, 
-                threshold=SIMILARITY_LABEL_THRESHOLD, device=device, combine_with_original=True
-            )
-            run_data.edge_index = combined_edge_index
-            print(f"    元のエッジにラベル分布特徴量ベースエッジを追加: {num_orig} + {num_new} → {num_total}")
-        
-        print(f"  ラベル分布特徴量エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
-    
-    elif USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is None:
-        print(f"  警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
-        print(f"    CALC_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
 
-    # 特徴量情報を取得
-    feature_info = get_feature_info(run_data, one_hot_labels, max_hops=MAX_HOPS)
-    
-    # 実際の特徴量次元を使用（隣接ノード特徴量が結合されている場合）
-    actual_feature_dim = run_data.x.shape[1]
-    print(f"  実際の入力特徴量次元: {actual_feature_dim}")
-    
-    # 特徴量の詳細表示（オプション）
-    if SHOW_FEATURE_DETAILS:
-        display_node_features(run_data, adj_matrix, one_hot_labels, DATASET_NAME, max_hops=MAX_HOPS)
-    
-    # モデル作成
-    model_kwargs = {
-        'model_name': MODEL_NAME,
-        'in_channels': actual_feature_dim,  # 実際の特徴量次元を使用
-        'hidden_channels': default_hidden_channels,
-        'out_channels': dataset.num_classes,
-        'num_layers': NUM_LAYERS,
-        'dropout': DROPOUT
-    }
-    
-    # MLPAndGCNFusionの場合は融合方法を指定
-    if MODEL_NAME == 'MLPAndGCNFusion':
-        model_kwargs.update({
-            'fusion_method': FUSION_METHOD
-        })
-        print(f"  MLPAndGCNFusionモデル作成:")
-        print(f"    融合方法: {FUSION_METHOD}")
-        if FUSION_METHOD == 'concat_alpha':
-            print(f"    学習可能パラメータ: α (GCN重み), 1-α (MLP重み)")
-    
-    # MLPAndGCNEnsembleの場合は特別な処理
-    elif MODEL_NAME == 'MLPAndGCNEnsemble':
-        # 生の特徴量とラベル分布特徴量を分離
-        if USE_PCA:
-            raw_features = run_data.x[:, :PCA_COMPONENTS]
-        else:
-            raw_features = run_data.x[:, :dataset.num_features]
-        
-        if neighbor_label_features is not None and CALC_NEIGHBOR_LABEL_FEATURES:
-            # ラベル分布特徴量 + 生の特徴量を結合
-            label_features = torch.cat([neighbor_label_features, raw_features], dim=1)
-        else:
-            # 生の特徴量のみを使用
-            label_features = raw_features
-        
-        out = model(raw_features, label_features, run_data.edge_index)
-    
-    # GCNAndMLPConcatの場合は、生の特徴量とラベル分布特徴量の次元を指定
-    elif MODEL_NAME == 'GCNAndMLPConcat':
-        # 元の特徴量次元（PCA処理前の生の特徴量）
-        if USE_PCA:
-            raw_feature_dim = PCA_COMPONENTS
-        else:
-            raw_feature_dim = dataset.num_features
-        
-        # ラベル分布特徴量の次元
-        label_dist_dim = neighbor_label_features.shape[1] if neighbor_label_features is not None else 0
-        
-        model_kwargs.update({
-            'xfeat_dim': raw_feature_dim,  # 生の特徴量の次元
-            'xlabel_dim': label_dist_dim,  # ラベル分布特徴量の次元
-            'gcn_hidden_dim': GCN_HIDDEN_DIM,  # GCNの隠れ層次元
-            'mlp_hidden_dim': MLP_HIDDEN_DIM   # MLPの隠れ層次元
-        })
-        
-        print(f"  GCNAndMLPConcatモデル作成:")
-        print(f"    生の特徴量次元: {raw_feature_dim}")
-        print(f"    ラベル分布特徴量次元: {label_dist_dim}")
-        print(f"    総特徴量次元: {actual_feature_dim}")
-        print(f"    GCN隠れ層次元: {GCN_HIDDEN_DIM}")
-        print(f"    MLP隠れ層次元: {MLP_HIDDEN_DIM}")
-    
-    model = ModelFactory.create_model(**model_kwargs).to(device)
-    
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-    
-    # 学習ループ
-    def train():
-        model.train()
-        optimizer.zero_grad()
-        
-        # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
-        if MODEL_NAME == 'H2GCN':
-            out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-        # GCNAndMLPConcatの場合は特別な処理
-        elif MODEL_NAME == 'GCNAndMLPConcat':
-            # 生の特徴量とラベル分布特徴量を分離
-            if USE_PCA:
-                raw_features = run_data.x[:, :PCA_COMPONENTS]
-            else:
-                raw_features = run_data.x[:, :dataset.num_features]
+            # 隣接ノードのラベル特徴量を結合
+            if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
+                print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
+                
+                # 通常の結合
+                if COMBINE_NEIGHBOR_LABEL_FEATURES:
+                    run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
+                print(f"  結合後の特徴量形状: {run_data.x.shape}")
+
+            # 生の特徴量類似度ベースエッジを必要に応じて結合
+            if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw' and hasattr(data, 'raw_similarity_edge_index'):
+                print(f"  類似度ベースエッジを結合中...")
+                print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+                
+                if SIMILARITY_EDGE_MODE == 'replace':
+                    # 元のエッジを類似度ベースエッジで置き換え
+                    original_edge_count = run_data.edge_index.shape[1]
+                    run_data.edge_index = data.raw_similarity_edge_index.clone()
+                    print(f"    元のエッジを類似度ベースエッジで置き換え: {original_edge_count} → {data.raw_num_similarity_edges}")
+                    
+                elif SIMILARITY_EDGE_MODE == 'add':
+                    # 元のエッジに類似度ベースエッジを追加
+                    original_edge_count = run_data.edge_index.shape[1]
+                    # 元のエッジと類似度ベースエッジを結合
+                    combined_edge_index = torch.cat([run_data.edge_index, data.raw_similarity_edge_index], dim=1)
+                    # 重複エッジを除去
+                    edge_pairs = combined_edge_index.t()
+                    unique_edges, _ = torch.unique(edge_pairs, dim=0, return_inverse=True)
+                    run_data.edge_index = unique_edges.t()
+                    final_edge_count = run_data.edge_index.shape[1]
+                    print(f"    元のエッジに類似度ベースエッジを追加: {original_edge_count} + {data.raw_num_similarity_edges} → {final_edge_count}")
+                
+                print(f"  エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
+
+            # ラベル分布特徴量類似度ベースエッジを必要に応じて結合
+            if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is not None:
+                print(f"  ラベル分布特徴量類似度ベースエッジを結合中...")
+                print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+                print(f"    ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
+                
+                # ラベル分布特徴量で類似度ベースエッジを作成
+                if SIMILARITY_EDGE_MODE == 'replace':
+                    # 元のエッジをラベル分布特徴量ベースエッジで置き換え
+                    original_edge_count = run_data.edge_index.shape[1]
+                    label_edge_index, label_adj_matrix, num_label_edges = create_similarity_based_edges(
+                        neighbor_label_features, threshold=SIMILARITY_LABEL_THRESHOLD, device=device
+                    )
+                    run_data.edge_index = label_edge_index
+                    print(f"    元のエッジをラベル分布特徴量ベースエッジで置き換え: {original_edge_count} → {num_label_edges}")
+                    
+                elif SIMILARITY_EDGE_MODE == 'add':
+                    # 元のエッジにラベル分布特徴量ベースエッジを追加
+                    original_edge_count = run_data.edge_index.shape[1]
+                    combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
+                        run_data.edge_index, neighbor_label_features, 
+                        threshold=SIMILARITY_LABEL_THRESHOLD, device=device, combine_with_original=True
+                    )
+                    run_data.edge_index = combined_edge_index
+                    print(f"    元のエッジにラベル分布特徴量ベースエッジを追加: {num_orig} + {num_new} → {num_total}")
+                
+                print(f"  ラベル分布特徴量エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
             
-            if neighbor_label_features is not None:
-                label_features = neighbor_label_features
-            else:
-                label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+            elif USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is None:
+                print(f"  警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
+                print(f"    CALC_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
+
+            # 特徴量情報を取得
+            feature_info = get_feature_info(run_data, one_hot_labels, max_hops=current_max_hops)
             
-            out = model(raw_features, label_features, run_data.edge_index)
-        # MLPAndGCNEnsembleの場合は特別な処理
-        elif MODEL_NAME == 'MLPAndGCNEnsemble':
-            # 生の特徴量とラベル分布特徴量を分離
-            if USE_PCA:
-                raw_features = run_data.x[:, :PCA_COMPONENTS]
-            else:
-                raw_features = run_data.x[:, :dataset.num_features]
+            # 実際の特徴量次元を使用（隣接ノード特徴量が結合されている場合）
+            actual_feature_dim = run_data.x.shape[1]
+            print(f"  実際の入力特徴量次元: {actual_feature_dim}")
             
-            if neighbor_label_features is not None:
-                label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
-            else:
-                label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+            # 特徴量の詳細表示（オプション）
+            if SHOW_FEATURE_DETAILS:
+                display_node_features(run_data, adj_matrix, one_hot_labels, DATASET_NAME, max_hops=current_max_hops)
             
-            out = model(raw_features, label_features, run_data.edge_index)
-        else:
-            # その他のモデルは標準的な処理
-            out = model(run_data.x, run_data.edge_index)
-        
-        loss = F.cross_entropy(out[run_data.train_mask], run_data.y[run_data.train_mask])
-        loss.backward()
-        optimizer.step()
-        return loss.item()
-    
-    # 評価関数
-    @torch.no_grad()
-    def test():
-        model.eval()
-        
-        # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
-        if MODEL_NAME == 'H2GCN':
-            out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-        # GCNAndMLPConcatの場合は特別な処理
-        elif MODEL_NAME == 'GCNAndMLPConcat':
-            # 生の特徴量とラベル分布特徴量を分離
-            if USE_PCA:
-                raw_features = run_data.x[:, :PCA_COMPONENTS]
-            else:
-                raw_features = run_data.x[:, :dataset.num_features]
+            # モデル作成
+            model_kwargs = {
+                'model_name': MODEL_NAME,
+                'in_channels': actual_feature_dim,  # 実際の特徴量次元を使用
+                'hidden_channels': default_hidden_channels,
+                'out_channels': dataset.num_classes,
+                'num_layers': NUM_LAYERS,
+                'dropout': DROPOUT
+            }
             
-            if neighbor_label_features is not None:
-                label_features = neighbor_label_features
-            else:
-                label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+            # MLPAndGCNFusionの場合は融合方法を指定
+            if MODEL_NAME == 'MLPAndGCNFusion':
+                model_kwargs.update({
+                    'fusion_method': FUSION_METHOD
+                })
+                print(f"  MLPAndGCNFusionモデル作成:")
+                print(f"    融合方法: {FUSION_METHOD}")
+                if FUSION_METHOD == 'concat_alpha':
+                    print(f"    学習可能パラメータ: α (GCN重み), 1-α (MLP重み)")
             
-            out = model(raw_features, label_features, run_data.edge_index)
-        # MLPAndGCNEnsembleの場合は特別な処理
-        elif MODEL_NAME == 'MLPAndGCNEnsemble':
-            # 生の特徴量とラベル分布特徴量を分離
-            if USE_PCA:
-                raw_features = run_data.x[:, :PCA_COMPONENTS]
-            else:
-                raw_features = run_data.x[:, :dataset.num_features]
+            # MLPAndGCNEnsembleの場合は特別な処理
+            elif MODEL_NAME == 'MLPAndGCNEnsemble':
+                # 生の特徴量とラベル分布特徴量を分離
+                if USE_PCA:
+                    raw_features = run_data.x[:, :PCA_COMPONENTS]
+                else:
+                    raw_features = run_data.x[:, :dataset.num_features]
+                
+                if neighbor_label_features is not None and CALC_NEIGHBOR_LABEL_FEATURES:
+                    # ラベル分布特徴量 + 生の特徴量を結合
+                    label_features = torch.cat([neighbor_label_features, raw_features], dim=1)
+                else:
+                    # 生の特徴量のみを使用
+                    label_features = raw_features
+                
+                out = model(raw_features, label_features, run_data.edge_index)
             
-            if neighbor_label_features is not None:
-                label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
-            else:
-                label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+            # GCNAndMLPConcatの場合は、生の特徴量とラベル分布特徴量の次元を指定
+            elif MODEL_NAME == 'GCNAndMLPConcat':
+                # 元の特徴量次元（PCA処理前の生の特徴量）
+                if USE_PCA:
+                    raw_feature_dim = PCA_COMPONENTS
+                else:
+                    raw_feature_dim = dataset.num_features
+                
+                # ラベル分布特徴量の次元
+                label_dist_dim = neighbor_label_features.shape[1] if neighbor_label_features is not None else 0
+                
+                model_kwargs.update({
+                    'xfeat_dim': raw_feature_dim,  # 生の特徴量の次元
+                    'xlabel_dim': label_dist_dim,  # ラベル分布特徴量の次元
+                    'gcn_hidden_dim': GCN_HIDDEN_DIM,  # GCNの隠れ層次元
+                    'mlp_hidden_dim': MLP_HIDDEN_DIM   # MLPの隠れ層次元
+                })
+                
+                print(f"  GCNAndMLPConcatモデル作成:")
+                print(f"    生の特徴量次元: {raw_feature_dim}")
+                print(f"    ラベル分布特徴量次元: {label_dist_dim}")
+                print(f"    総特徴量次元: {actual_feature_dim}")
+                print(f"    GCN隠れ層次元: {GCN_HIDDEN_DIM}")
+                print(f"    MLP隠れ層次元: {MLP_HIDDEN_DIM}")
             
-            out = model(raw_features, label_features, run_data.edge_index)
-        else:
-            # その他のモデルは標準的な処理
-            out = model(run_data.x, run_data.edge_index)
-        
-        pred = out.argmax(dim=1)
-        accs = []
-        for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
-            correct = pred[mask] == run_data.y[mask]
-            accs.append(int(correct.sum()) / int(mask.sum()))
-        return accs
-    
-    # α値を取得する関数
-    def get_alpha_value():
-        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
-            return torch.clamp(model.alpha, 0, 1).item()
-        return None
-    
-    # β値を取得する関数
-    def get_beta_value():
-        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
-            return torch.clamp(1 - model.alpha, 0, 1).item()
-        return None
-    
-    # 学習実行
-    best_val_acc = 0
-    best_test_acc = 0
-    final_train_acc = 0
-    final_val_acc = 0
-    final_test_acc = 0
-    
-    # Early stopping用の変数
-    if USE_EARLY_STOPPING:
-        best_val_acc_for_early_stopping = 0
-        patience_counter = 0
-        early_stopped = False
-    
-    for epoch in range(NUM_EPOCHS + 1):
-        loss = train()
-        train_acc, val_acc, test_acc = test()
-        
-        # ベスト結果を記録
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            best_test_acc = test_acc
-        
-        # Early stoppingの処理
-        if USE_EARLY_STOPPING:
-            if val_acc > best_val_acc_for_early_stopping + EARLY_STOPPING_MIN_DELTA:
-                best_val_acc_for_early_stopping = val_acc
+            model = ModelFactory.create_model(**model_kwargs).to(device)
+            
+            optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+            
+            # 学習ループ
+            def train():
+                model.train()
+                optimizer.zero_grad()
+                
+                # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+                if MODEL_NAME == 'H2GCN':
+                    out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                # GCNAndMLPConcatの場合は特別な処理
+                elif MODEL_NAME == 'GCNAndMLPConcat':
+                    # 生の特徴量とラベル分布特徴量を分離
+                    if USE_PCA:
+                        raw_features = run_data.x[:, :PCA_COMPONENTS]
+                    else:
+                        raw_features = run_data.x[:, :dataset.num_features]
+                    
+                    if neighbor_label_features is not None:
+                        label_features = neighbor_label_features
+                    else:
+                        label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+                    
+                    out = model(raw_features, label_features, run_data.edge_index)
+                # MLPAndGCNEnsembleの場合は特別な処理
+                elif MODEL_NAME == 'MLPAndGCNEnsemble':
+                    # 生の特徴量とラベル分布特徴量を分離
+                    if USE_PCA:
+                        raw_features = run_data.x[:, :PCA_COMPONENTS]
+                    else:
+                        raw_features = run_data.x[:, :dataset.num_features]
+                    
+                    if neighbor_label_features is not None:
+                        label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
+                    else:
+                        label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+                    
+                    out = model(raw_features, label_features, run_data.edge_index)
+                else:
+                    # その他のモデルは標準的な処理
+                    out = model(run_data.x, run_data.edge_index)
+                
+                loss = F.cross_entropy(out[run_data.train_mask], run_data.y[run_data.train_mask])
+                loss.backward()
+                optimizer.step()
+                return loss.item()
+            
+            # 評価関数
+            @torch.no_grad()
+            def test():
+                model.eval()
+                
+                # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+                if MODEL_NAME == 'H2GCN':
+                    out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                # GCNAndMLPConcatの場合は特別な処理
+                elif MODEL_NAME == 'GCNAndMLPConcat':
+                    # 生の特徴量とラベル分布特徴量を分離
+                    if USE_PCA:
+                        raw_features = run_data.x[:, :PCA_COMPONENTS]
+                    else:
+                        raw_features = run_data.x[:, :dataset.num_features]
+                    
+                    if neighbor_label_features is not None:
+                        label_features = neighbor_label_features
+                    else:
+                        label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+                    
+                    out = model(raw_features, label_features, run_data.edge_index)
+                # MLPAndGCNEnsembleの場合は特別な処理
+                elif MODEL_NAME == 'MLPAndGCNEnsemble':
+                    # 生の特徴量とラベル分布特徴量を分離
+                    if USE_PCA:
+                        raw_features = run_data.x[:, :PCA_COMPONENTS]
+                    else:
+                        raw_features = run_data.x[:, :dataset.num_features]
+                    
+                    if neighbor_label_features is not None:
+                        label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
+                    else:
+                        label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+                    
+                    out = model(raw_features, label_features, run_data.edge_index)
+                else:
+                    # その他のモデルは標準的な処理
+                    out = model(run_data.x, run_data.edge_index)
+                
+                pred = out.argmax(dim=1)
+                accs = []
+                for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
+                    correct = pred[mask] == run_data.y[mask]
+                    accs.append(int(correct.sum()) / int(mask.sum()))
+                return accs
+            
+            # α値を取得する関数
+            def get_alpha_value():
+                if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
+                    return torch.clamp(model.alpha, 0, 1).item()
+                return None
+            
+            # β値を取得する関数
+            def get_beta_value():
+                if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
+                    return torch.clamp(1 - model.alpha, 0, 1).item()
+                return None
+            
+            # 学習実行
+            best_val_acc = 0
+            best_test_acc = 0
+            final_train_acc = 0
+            final_val_acc = 0
+            final_test_acc = 0
+            
+            # Early stopping用の変数
+            if USE_EARLY_STOPPING:
+                best_val_acc_for_early_stopping = 0
                 patience_counter = 0
-            else:
-                patience_counter += 1
+                early_stopped = False
             
-            # Early stopping条件をチェック
-            if patience_counter >= EARLY_STOPPING_PATIENCE:
-                early_stopped = True
-                print(f"Early stopping triggered at epoch {epoch} (patience: {EARLY_STOPPING_PATIENCE})")
-                break
+            for epoch in range(NUM_EPOCHS + 1):
+                loss = train()
+                train_acc, val_acc, test_acc = test()
+                
+                # ベスト結果を記録
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    best_test_acc = test_acc
+                
+                # Early stoppingの処理
+                if USE_EARLY_STOPPING:
+                    if val_acc > best_val_acc_for_early_stopping + EARLY_STOPPING_MIN_DELTA:
+                        best_val_acc_for_early_stopping = val_acc
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
+                    
+                    # Early stopping条件をチェック
+                    if patience_counter >= EARLY_STOPPING_PATIENCE:
+                        early_stopped = True
+                        print(f"Early stopping triggered at epoch {epoch} (patience: {EARLY_STOPPING_PATIENCE})")
+                        break
+                
+                # 最終結果を記録
+                if epoch == NUM_EPOCHS:
+                    final_train_acc = train_acc
+                    final_val_acc = val_acc
+                    final_test_acc = test_acc
+                
+                # 進捗表示
+                if epoch % DISPLAY_PROGRESS_EVERY == 0:
+                    alpha_info = ""
+                    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
+                        alpha_val = get_alpha_value()
+                        beta_val = get_beta_value()
+                        if alpha_val is not None and beta_val is not None:
+                            alpha_info = f", α={alpha_val:.4f}, 1-α={beta_val:.4f}"
+                        elif alpha_val is not None:
+                            alpha_info = f", α={alpha_val:.4f}"
+                    
+                    early_stop_info = ""
+                    if USE_EARLY_STOPPING:
+                        early_stop_info = f", Patience: {patience_counter}/{EARLY_STOPPING_PATIENCE}"
+                    
+                    print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}{early_stop_info}')
+            
+            # Early stoppingで終了した場合の最終結果を記録
+            if USE_EARLY_STOPPING and early_stopped:
+                final_train_acc = train_acc
+                final_val_acc = val_acc
+                final_test_acc = test_acc
+            
+            # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値を表示
+            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
+                final_alpha = get_alpha_value()
+                final_beta = get_beta_value()
+                if final_alpha is not None or final_beta is not None:
+                    print(f"\n=== {MODEL_NAME} 最終α・(1-α)値 ===")
+                    if hasattr(model, 'print_alpha_info'):
+                        model.print_alpha_info()
+                    else:
+                        print(f"α (GCN重み): {final_alpha:.4f}")
+                        print(f"(1-α) (MLP重み): {final_beta:.4f}")
+            
+            # GCNAndMLPConcatモデルの最終隠れ層次元情報を表示
+            elif MODEL_NAME == 'GCNAndMLPConcat':
+                print(f"\n=== GCNAndMLPConcat 最終隠れ層次元情報 ===")
+                model.print_hidden_dims_info()
+            
+            # 結果を保存
+            run_result = {
+                'run': run + 1,
+                'final_train_acc': final_train_acc,
+                'final_val_acc': final_val_acc,
+                'final_test_acc': final_test_acc,
+                'best_val_acc': best_val_acc,
+                'best_test_acc': best_test_acc
+            }
+            
+            # ノイズ情報を保存（実験前のノイズ情報を使用）
+            if USE_FEATURE_NOISE:
+                run_result['noise_info'] = noise_info
+            
+            # Early stopping情報を保存
+            if USE_EARLY_STOPPING:
+                run_result['early_stopped'] = early_stopped
+                run_result['early_stopping_epoch'] = epoch if early_stopped else NUM_EPOCHS
+                run_result['early_stopping_patience'] = EARLY_STOPPING_PATIENCE
+                run_result['early_stopping_min_delta'] = EARLY_STOPPING_MIN_DELTA
+            
+            # MLPAndGCNFusion/MLPAndGCNEnsembleの場合はαとβ値も保存
+            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
+                final_alpha = get_alpha_value()
+                final_beta = get_beta_value()
+                if final_alpha is not None:
+                    run_result['final_alpha'] = final_alpha
+                if final_beta is not None:
+                    run_result['final_1_minus_alpha'] = final_beta
+                
+                # α情報を取得
+                if MODEL_NAME == 'MLPAndGCNFusion' and hasattr(model, 'get_alpha_info'):
+                    alpha_info = model.get_alpha_info()
+                elif MODEL_NAME == 'MLPAndGCNEnsemble' and hasattr(model, 'get_alpha_info'):
+                    alpha_info = model.get_alpha_info()
+                else:
+                    # フォールバック用のα情報
+                    alpha_info = {
+                        'alpha': final_alpha,
+                        'beta': final_beta,
+                        'gcn_weight': final_alpha,
+                        'mlp_weight': final_beta,
+                        'gcn_name': 'GCN Features',
+                        'mlp_name': 'MLP Features',
+                        'fusion_method': 'ensemble'
+                    }
+                run_result['alpha_info'] = alpha_info
+            
+            # GCNAndMLPConcatの場合は隠れ層次元情報も保存
+            elif MODEL_NAME == 'GCNAndMLPConcat':
+                hidden_dims_info = model.get_hidden_dims_info()
+                run_result['hidden_dims_info'] = hidden_dims_info
+            
+            param_results.append(run_result)
+            
+            print(f"実験 {run + 1} 完了:")
+            print(f"  最終結果 - Train: {final_train_acc:.4f}, Val: {final_val_acc:.4f}, Test: {final_test_acc:.4f}")
+            print(f"  ベスト結果 - Val: {best_val_acc:.4f}, Test: {best_test_acc:.4f}")
         
-        # 最終結果を記録
-        if epoch == NUM_EPOCHS:
+        grid_search_results[param_value] = param_results
+    
+    # Grid Search結果の集計と表示
+    print(f"\n{'='*80}")
+    print(f"=== Grid Search結果サマリー ===")
+    print(f"{'='*80}")
+    
+    # 各パラメータ値での結果を集計
+    param_summary = {}
+    for param_value, results in grid_search_results.items():
+        final_test_accs = [r['final_test_acc'] for r in results]
+        best_test_accs = [r['best_test_acc'] for r in results]
+        final_val_accs = [r['final_val_acc'] for r in results]
+        best_val_accs = [r['best_val_acc'] for r in results]
+        
+        param_summary[param_value] = {
+            'final_test_mean': np.mean(final_test_accs),
+            'final_test_std': np.std(final_test_accs),
+            'best_test_mean': np.mean(best_test_accs),
+            'best_test_std': np.std(best_test_accs),
+            'final_val_mean': np.mean(final_val_accs),
+            'final_val_std': np.std(final_val_accs),
+            'best_val_mean': np.mean(best_val_accs),
+            'best_val_std': np.std(best_val_accs),
+            'results': results
+        }
+    
+    # 結果を表形式で表示
+    print(f"\n{GRID_SEARCH_PARAM}値別結果:")
+    print(f"{'='*60}")
+    print(f"{GRID_SEARCH_PARAM:>8} | {'Final Test':>12} | {'Best Test':>12} | {'Final Val':>12} | {'Best Val':>12}")
+    print(f"{'='*60}")
+    
+    for param_value in sorted(grid_search_results.keys()):
+        summary = param_summary[param_value]
+        print(f"{param_value:>8} | {summary['final_test_mean']:>10.4f}±{summary['final_test_std']:<1.4f} | "
+              f"{summary['best_test_mean']:>10.4f}±{summary['best_test_std']:<1.4f} | "
+              f"{summary['final_val_mean']:>10.4f}±{summary['final_val_std']:<1.4f} | "
+              f"{summary['best_val_mean']:>10.4f}±{summary['best_val_std']:<1.4f}")
+    
+    # 最適なパラメータ値を特定（検証精度のベスト値で選択）
+    best_param_by_val = max(param_summary.items(), key=lambda x: x[1]['best_val_mean'])
+    best_param_by_test = max(param_summary.items(), key=lambda x: x[1]['best_test_mean'])
+    
+    print(f"\n{'='*60}")
+    print(f"最適パラメータ選択結果:")
+    print(f"{'='*60}")
+    print(f"検証精度ベスト値による最適{GRID_SEARCH_PARAM}: {best_param_by_val[0]}")
+    print(f"  検証精度: {best_param_by_val[1]['best_val_mean']:.4f} ± {best_param_by_val[1]['best_val_std']:.4f}")
+    print(f"  テスト精度: {best_param_by_val[1]['best_test_mean']:.4f} ± {best_param_by_val[1]['best_test_std']:.4f}")
+    print(f"テスト精度ベスト値による最適{GRID_SEARCH_PARAM}: {best_param_by_test[0]}")
+    print(f"  検証精度: {best_param_by_test[1]['best_val_mean']:.4f} ± {best_param_by_test[1]['best_val_std']:.4f}")
+    print(f"  テスト精度: {best_param_by_test[1]['best_test_mean']:.4f} ± {best_param_by_test[1]['best_test_std']:.4f}")
+    
+    # 推奨パラメータ（検証精度ベスト値による選択）
+    recommended_param = best_param_by_val[0]
+    print(f"\n推奨{GRID_SEARCH_PARAM}: {recommended_param} (検証精度ベスト値による選択)")
+    
+    # 全結果をall_resultsに統合
+    all_results = []
+    for param_value, results in grid_search_results.items():
+        for result in results:
+            result['grid_search_param'] = param_value
+            result['grid_search_param_name'] = GRID_SEARCH_PARAM
+        all_results.extend(results)
+    
+    # 詳細な結果表示
+    print(f"\n=== 詳細結果 ===")
+    for i, result in enumerate(all_results):
+        alpha_info = ""
+        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in result:
+            alpha_info = f", α={result['final_alpha']:.4f}"
+            if 'final_1_minus_alpha' in result:
+                alpha_info += f", 1-α={result['final_1_minus_alpha']:.4f}"
+        
+        noise_info = ""
+        if USE_FEATURE_NOISE and 'noise_info' in result and result['noise_info'] is not None:
+            noise_info = f", ノイズ={result['noise_info'].get('noise_percentage', 0):.1%}"
+        
+        early_stop_info = ""
+        if USE_EARLY_STOPPING and result.get('early_stopped', False):
+            early_stop_info = f", ES@{result.get('early_stopping_epoch', 'N/A')}"
+        
+        grid_search_info = ""
+        if 'grid_search_param' in result:
+            grid_search_info = f", {result['grid_search_param_name']}={result['grid_search_param']}"
+        
+        print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{noise_info}{early_stop_info}{grid_search_info}")
+    
+    # 結果の集計と表示
+    print(f"\n=== 実験結果統計 ({NUM_RUNS}回の平均) ===")
+
+# 単一パラメータ実行（Grid Searchを使用しない場合）
+else:
+    print(f"\n=== 単一パラメータ実行 ===")
+    print(f"{GRID_SEARCH_PARAM} = {MAX_HOPS}")
+    
+    # 実験実行
+    for run in range(NUM_RUNS):
+        print(f"\n=== 実験 {run + 1}/{NUM_RUNS} ===")
+        
+        # 各実験で独立したデータ分割を作成
+        run_data = data.clone()
+        
+        # ランダムなデータ分割を作成
+        num_nodes = run_data.num_nodes
+        indices = torch.randperm(num_nodes)
+        
+        # データ分割サイズを計算
+        train_size = int(TRAIN_RATIO * num_nodes)
+        val_size = int(VAL_RATIO * num_nodes)
+        
+        # 新しいマスクを作成
+        run_data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        run_data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        run_data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        
+        run_data.train_mask[indices[:train_size]] = True
+        run_data.val_mask[indices[train_size:train_size + val_size]] = True
+        run_data.test_mask[indices[train_size + val_size:]] = True
+        
+        print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
+        
+        # 実験中にラベル特徴量を作成
+        adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
+            run_data, device, max_hops=MAX_HOPS, calc_neighbor_label_features=CALC_NEIGHBOR_LABEL_FEATURES,
+            temperature=TEMPERATURE
+        )
+
+        # 隣接ノードのラベル特徴量を結合
+        if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
+            print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
+            
+            # 通常の結合
+            if COMBINE_NEIGHBOR_LABEL_FEATURES:
+                run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
+            print(f"  結合後の特徴量形状: {run_data.x.shape}")
+
+        # 生の特徴量類似度ベースエッジを必要に応じて結合
+        if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw' and hasattr(data, 'raw_similarity_edge_index'):
+            print(f"  類似度ベースエッジを結合中...")
+            print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+            
+            if SIMILARITY_EDGE_MODE == 'replace':
+                # 元のエッジを類似度ベースエッジで置き換え
+                original_edge_count = run_data.edge_index.shape[1]
+                run_data.edge_index = data.raw_similarity_edge_index.clone()
+                print(f"    元のエッジを類似度ベースエッジで置き換え: {original_edge_count} → {data.raw_num_similarity_edges}")
+                
+            elif SIMILARITY_EDGE_MODE == 'add':
+                # 元のエッジに類似度ベースエッジを追加
+                original_edge_count = run_data.edge_index.shape[1]
+                # 元のエッジと類似度ベースエッジを結合
+                combined_edge_index = torch.cat([run_data.edge_index, data.raw_similarity_edge_index], dim=1)
+                # 重複エッジを除去
+                edge_pairs = combined_edge_index.t()
+                unique_edges, _ = torch.unique(edge_pairs, dim=0, return_inverse=True)
+                run_data.edge_index = unique_edges.t()
+                final_edge_count = run_data.edge_index.shape[1]
+                print(f"    元のエッジに類似度ベースエッジを追加: {original_edge_count} + {data.raw_num_similarity_edges} → {final_edge_count}")
+            
+            print(f"  エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
+
+        # ラベル分布特徴量類似度ベースエッジを必要に応じて結合
+        if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is not None:
+            print(f"  ラベル分布特徴量類似度ベースエッジを結合中...")
+            print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+            print(f"    ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
+            
+            # ラベル分布特徴量で類似度ベースエッジを作成
+            if SIMILARITY_EDGE_MODE == 'replace':
+                # 元のエッジをラベル分布特徴量ベースエッジで置き換え
+                original_edge_count = run_data.edge_index.shape[1]
+                label_edge_index, label_adj_matrix, num_label_edges = create_similarity_based_edges(
+                    neighbor_label_features, threshold=SIMILARITY_LABEL_THRESHOLD, device=device
+                )
+                run_data.edge_index = label_edge_index
+                print(f"    元のエッジをラベル分布特徴量ベースエッジで置き換え: {original_edge_count} → {num_label_edges}")
+                
+            elif SIMILARITY_EDGE_MODE == 'add':
+                # 元のエッジにラベル分布特徴量ベースエッジを追加
+                original_edge_count = run_data.edge_index.shape[1]
+                combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
+                    run_data.edge_index, neighbor_label_features, 
+                    threshold=SIMILARITY_LABEL_THRESHOLD, device=device, combine_with_original=True
+                )
+                run_data.edge_index = combined_edge_index
+                print(f"    元のエッジにラベル分布特徴量ベースエッジを追加: {num_orig} + {num_new} → {num_total}")
+            
+            print(f"  ラベル分布特徴量エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
+        
+        elif USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is None:
+            print(f"  警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
+            print(f"    CALC_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
+
+        # 特徴量情報を取得
+        feature_info = get_feature_info(run_data, one_hot_labels, max_hops=MAX_HOPS)
+        
+        # 実際の特徴量次元を使用（隣接ノード特徴量が結合されている場合）
+        actual_feature_dim = run_data.x.shape[1]
+        print(f"  実際の入力特徴量次元: {actual_feature_dim}")
+        
+        # 特徴量の詳細表示（オプション）
+        if SHOW_FEATURE_DETAILS:
+            display_node_features(run_data, adj_matrix, one_hot_labels, DATASET_NAME, max_hops=MAX_HOPS)
+        
+        # モデル作成
+        model_kwargs = {
+            'model_name': MODEL_NAME,
+            'in_channels': actual_feature_dim,  # 実際の特徴量次元を使用
+            'hidden_channels': default_hidden_channels,
+            'out_channels': dataset.num_classes,
+            'num_layers': NUM_LAYERS,
+            'dropout': DROPOUT
+        }
+        
+        # MLPAndGCNFusionの場合は融合方法を指定
+        if MODEL_NAME == 'MLPAndGCNFusion':
+            model_kwargs.update({
+                'fusion_method': FUSION_METHOD
+            })
+            print(f"  MLPAndGCNFusionモデル作成:")
+            print(f"    融合方法: {FUSION_METHOD}")
+            if FUSION_METHOD == 'concat_alpha':
+                print(f"    学習可能パラメータ: α (GCN重み), 1-α (MLP重み)")
+        
+        # MLPAndGCNEnsembleの場合は特別な処理
+        elif MODEL_NAME == 'MLPAndGCNEnsemble':
+            # 生の特徴量とラベル分布特徴量を分離
+            if USE_PCA:
+                raw_features = run_data.x[:, :PCA_COMPONENTS]
+            else:
+                raw_features = run_data.x[:, :dataset.num_features]
+            
+            if neighbor_label_features is not None and CALC_NEIGHBOR_LABEL_FEATURES:
+                # ラベル分布特徴量 + 生の特徴量を結合
+                label_features = torch.cat([neighbor_label_features, raw_features], dim=1)
+            else:
+                # 生の特徴量のみを使用
+                label_features = raw_features
+            
+            out = model(raw_features, label_features, run_data.edge_index)
+        
+        # GCNAndMLPConcatの場合は、生の特徴量とラベル分布特徴量の次元を指定
+        elif MODEL_NAME == 'GCNAndMLPConcat':
+            # 元の特徴量次元（PCA処理前の生の特徴量）
+            if USE_PCA:
+                raw_feature_dim = PCA_COMPONENTS
+            else:
+                raw_feature_dim = dataset.num_features
+            
+            # ラベル分布特徴量の次元
+            label_dist_dim = neighbor_label_features.shape[1] if neighbor_label_features is not None else 0
+            
+            model_kwargs.update({
+                'xfeat_dim': raw_feature_dim,  # 生の特徴量の次元
+                'xlabel_dim': label_dist_dim,  # ラベル分布特徴量の次元
+                'gcn_hidden_dim': GCN_HIDDEN_DIM,  # GCNの隠れ層次元
+                'mlp_hidden_dim': MLP_HIDDEN_DIM   # MLPの隠れ層次元
+            })
+            
+            print(f"  GCNAndMLPConcatモデル作成:")
+            print(f"    生の特徴量次元: {raw_feature_dim}")
+            print(f"    ラベル分布特徴量次元: {label_dist_dim}")
+            print(f"    総特徴量次元: {actual_feature_dim}")
+            print(f"    GCN隠れ層次元: {GCN_HIDDEN_DIM}")
+            print(f"    MLP隠れ層次元: {MLP_HIDDEN_DIM}")
+        
+        model = ModelFactory.create_model(**model_kwargs).to(device)
+        
+        optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+        
+        # 学習ループ
+        def train():
+            model.train()
+            optimizer.zero_grad()
+            
+            # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+            if MODEL_NAME == 'H2GCN':
+                out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+            # GCNAndMLPConcatの場合は特別な処理
+            elif MODEL_NAME == 'GCNAndMLPConcat':
+                # 生の特徴量とラベル分布特徴量を分離
+                if USE_PCA:
+                    raw_features = run_data.x[:, :PCA_COMPONENTS]
+                else:
+                    raw_features = run_data.x[:, :dataset.num_features]
+                
+                if neighbor_label_features is not None:
+                    label_features = neighbor_label_features
+                else:
+                    label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+                
+                out = model(raw_features, label_features, run_data.edge_index)
+            # MLPAndGCNEnsembleの場合は特別な処理
+            elif MODEL_NAME == 'MLPAndGCNEnsemble':
+                # 生の特徴量とラベル分布特徴量を分離
+                if USE_PCA:
+                    raw_features = run_data.x[:, :PCA_COMPONENTS]
+                else:
+                    raw_features = run_data.x[:, :dataset.num_features]
+                
+                if neighbor_label_features is not None:
+                    label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
+                else:
+                    label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+                
+                out = model(raw_features, label_features, run_data.edge_index)
+            else:
+                # その他のモデルは標準的な処理
+                out = model(run_data.x, run_data.edge_index)
+            
+            loss = F.cross_entropy(out[run_data.train_mask], run_data.y[run_data.train_mask])
+            loss.backward()
+            optimizer.step()
+            return loss.item()
+        
+        # 評価関数
+        @torch.no_grad()
+        def test():
+            model.eval()
+            
+            # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+            if MODEL_NAME == 'H2GCN':
+                out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+            # GCNAndMLPConcatの場合は特別な処理
+            elif MODEL_NAME == 'GCNAndMLPConcat':
+                # 生の特徴量とラベル分布特徴量を分離
+                if USE_PCA:
+                    raw_features = run_data.x[:, :PCA_COMPONENTS]
+                else:
+                    raw_features = run_data.x[:, :dataset.num_features]
+                
+                if neighbor_label_features is not None:
+                    label_features = neighbor_label_features
+                else:
+                    label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+                
+                out = model(raw_features, label_features, run_data.edge_index)
+            # MLPAndGCNEnsembleの場合は特別な処理
+            elif MODEL_NAME == 'MLPAndGCNEnsemble':
+                # 生の特徴量とラベル分布特徴量を分離
+                if USE_PCA:
+                    raw_features = run_data.x[:, :PCA_COMPONENTS]
+                else:
+                    raw_features = run_data.x[:, :dataset.num_features]
+                
+                if neighbor_label_features is not None:
+                    label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
+                else:
+                    label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+                
+                out = model(raw_features, label_features, run_data.edge_index)
+            else:
+                # その他のモデルは標準的な処理
+                out = model(run_data.x, run_data.edge_index)
+            
+            pred = out.argmax(dim=1)
+            accs = []
+            for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
+                correct = pred[mask] == run_data.y[mask]
+                accs.append(int(correct.sum()) / int(mask.sum()))
+            return accs
+        
+        # α値を取得する関数
+        def get_alpha_value():
+            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
+                return torch.clamp(model.alpha, 0, 1).item()
+            return None
+        
+        # β値を取得する関数
+        def get_beta_value():
+            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
+                return torch.clamp(1 - model.alpha, 0, 1).item()
+            return None
+        
+        # 学習実行
+        best_val_acc = 0
+        best_test_acc = 0
+        final_train_acc = 0
+        final_val_acc = 0
+        final_test_acc = 0
+        
+        # Early stopping用の変数
+        if USE_EARLY_STOPPING:
+            best_val_acc_for_early_stopping = 0
+            patience_counter = 0
+            early_stopped = False
+        
+        for epoch in range(NUM_EPOCHS + 1):
+            loss = train()
+            train_acc, val_acc, test_acc = test()
+            
+            # ベスト結果を記録
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                best_test_acc = test_acc
+            
+            # Early stoppingの処理
+            if USE_EARLY_STOPPING:
+                if val_acc > best_val_acc_for_early_stopping + EARLY_STOPPING_MIN_DELTA:
+                    best_val_acc_for_early_stopping = val_acc
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+                
+                # Early stopping条件をチェック
+                if patience_counter >= EARLY_STOPPING_PATIENCE:
+                    early_stopped = True
+                    print(f"Early stopping triggered at epoch {epoch} (patience: {EARLY_STOPPING_PATIENCE})")
+                    break
+            
+            # 最終結果を記録
+            if epoch == NUM_EPOCHS:
+                final_train_acc = train_acc
+                final_val_acc = val_acc
+                final_test_acc = test_acc
+            
+            # 進捗表示
+            if epoch % DISPLAY_PROGRESS_EVERY == 0:
+                alpha_info = ""
+                if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
+                    alpha_val = get_alpha_value()
+                    beta_val = get_beta_value()
+                    if alpha_val is not None and beta_val is not None:
+                        alpha_info = f", α={alpha_val:.4f}, 1-α={beta_val:.4f}"
+                    elif alpha_val is not None:
+                        alpha_info = f", α={alpha_val:.4f}"
+                
+                early_stop_info = ""
+                if USE_EARLY_STOPPING:
+                    early_stop_info = f", Patience: {patience_counter}/{EARLY_STOPPING_PATIENCE}"
+                
+                print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}{early_stop_info}')
+        
+        # Early stoppingで終了した場合の最終結果を記録
+        if USE_EARLY_STOPPING and early_stopped:
             final_train_acc = train_acc
             final_val_acc = val_acc
             final_test_acc = test_acc
         
-        # 進捗表示
-        if epoch % DISPLAY_PROGRESS_EVERY == 0:
-            alpha_info = ""
-            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-                alpha_val = get_alpha_value()
-                beta_val = get_beta_value()
-                if alpha_val is not None and beta_val is not None:
-                    alpha_info = f", α={alpha_val:.4f}, 1-α={beta_val:.4f}"
-                elif alpha_val is not None:
-                    alpha_info = f", α={alpha_val:.4f}"
-            
-            early_stop_info = ""
-            if USE_EARLY_STOPPING:
-                early_stop_info = f", Patience: {patience_counter}/{EARLY_STOPPING_PATIENCE}"
-            
-            print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}{early_stop_info}')
-    
-    # Early stoppingで終了した場合の最終結果を記録
-    if USE_EARLY_STOPPING and early_stopped:
-        final_train_acc = train_acc
-        final_val_acc = val_acc
-        final_test_acc = test_acc
-    
-    # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値を表示
-    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-        final_alpha = get_alpha_value()
-        final_beta = get_beta_value()
-        if final_alpha is not None or final_beta is not None:
-            print(f"\n=== {MODEL_NAME} 最終α・(1-α)値 ===")
-            if hasattr(model, 'print_alpha_info'):
-                model.print_alpha_info()
-            else:
-                print(f"α (GCN重み): {final_alpha:.4f}")
-                print(f"(1-α) (MLP重み): {final_beta:.4f}")
-    
-    # GCNAndMLPConcatモデルの最終隠れ層次元情報を表示
-    elif MODEL_NAME == 'GCNAndMLPConcat':
-        print(f"\n=== GCNAndMLPConcat 最終隠れ層次元情報 ===")
-        model.print_hidden_dims_info()
-    
-    # 結果を保存
-    run_result = {
-        'run': run + 1,
-        'final_train_acc': final_train_acc,
-        'final_val_acc': final_val_acc,
-        'final_test_acc': final_test_acc,
-        'best_val_acc': best_val_acc,
-        'best_test_acc': best_test_acc
-    }
-    
-    # ノイズ情報を保存（実験前のノイズ情報を使用）
-    if USE_FEATURE_NOISE:
-        run_result['noise_info'] = noise_info
-    
-    # Early stopping情報を保存
-    if USE_EARLY_STOPPING:
-        run_result['early_stopped'] = early_stopped
-        run_result['early_stopping_epoch'] = epoch if early_stopped else NUM_EPOCHS
-        run_result['early_stopping_patience'] = EARLY_STOPPING_PATIENCE
-        run_result['early_stopping_min_delta'] = EARLY_STOPPING_MIN_DELTA
-    
-    # MLPAndGCNFusion/MLPAndGCNEnsembleの場合はαとβ値も保存
-    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-        final_alpha = get_alpha_value()
-        final_beta = get_beta_value()
-        if final_alpha is not None:
-            run_result['final_alpha'] = final_alpha
-        if final_beta is not None:
-            run_result['final_1_minus_alpha'] = final_beta
+        # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値を表示
+        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
+            final_alpha = get_alpha_value()
+            final_beta = get_beta_value()
+            if final_alpha is not None or final_beta is not None:
+                print(f"\n=== {MODEL_NAME} 最終α・(1-α)値 ===")
+                if hasattr(model, 'print_alpha_info'):
+                    model.print_alpha_info()
+                else:
+                    print(f"α (GCN重み): {final_alpha:.4f}")
+                    print(f"(1-α) (MLP重み): {final_beta:.4f}")
         
-        # α情報を取得
-        if MODEL_NAME == 'MLPAndGCNFusion' and hasattr(model, 'get_alpha_info'):
-            alpha_info = model.get_alpha_info()
-        elif MODEL_NAME == 'MLPAndGCNEnsemble' and hasattr(model, 'get_alpha_info'):
-            alpha_info = model.get_alpha_info()
-        else:
-            # フォールバック用のα情報
-            alpha_info = {
-                'alpha': final_alpha,
-                'beta': final_beta,
-                'gcn_weight': final_alpha,
-                'mlp_weight': final_beta,
-                'gcn_name': 'GCN Features',
-                'mlp_name': 'MLP Features',
-                'fusion_method': 'ensemble'
-            }
-        run_result['alpha_info'] = alpha_info
+        # GCNAndMLPConcatモデルの最終隠れ層次元情報を表示
+        elif MODEL_NAME == 'GCNAndMLPConcat':
+            print(f"\n=== GCNAndMLPConcat 最終隠れ層次元情報 ===")
+            model.print_hidden_dims_info()
+        
+        # 結果を保存
+        run_result = {
+            'run': run + 1,
+            'final_train_acc': final_train_acc,
+            'final_val_acc': final_val_acc,
+            'final_test_acc': final_test_acc,
+            'best_val_acc': best_val_acc,
+            'best_test_acc': best_test_acc
+        }
+        
+        # ノイズ情報を保存（実験前のノイズ情報を使用）
+        if USE_FEATURE_NOISE:
+            run_result['noise_info'] = noise_info
+        
+        # Early stopping情報を保存
+        if USE_EARLY_STOPPING:
+            run_result['early_stopped'] = early_stopped
+            run_result['early_stopping_epoch'] = epoch if early_stopped else NUM_EPOCHS
+            run_result['early_stopping_patience'] = EARLY_STOPPING_PATIENCE
+            run_result['early_stopping_min_delta'] = EARLY_STOPPING_MIN_DELTA
+        
+        # MLPAndGCNFusion/MLPAndGCNEnsembleの場合はαとβ値も保存
+        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
+            final_alpha = get_alpha_value()
+            final_beta = get_beta_value()
+            if final_alpha is not None:
+                run_result['final_alpha'] = final_alpha
+            if final_beta is not None:
+                run_result['final_1_minus_alpha'] = final_beta
+            
+            # α情報を取得
+            if MODEL_NAME == 'MLPAndGCNFusion' and hasattr(model, 'get_alpha_info'):
+                alpha_info = model.get_alpha_info()
+            elif MODEL_NAME == 'MLPAndGCNEnsemble' and hasattr(model, 'get_alpha_info'):
+                alpha_info = model.get_alpha_info()
+            else:
+                # フォールバック用のα情報
+                alpha_info = {
+                    'alpha': final_alpha,
+                    'beta': final_beta,
+                    'gcn_weight': final_alpha,
+                    'mlp_weight': final_beta,
+                    'gcn_name': 'GCN Features',
+                    'mlp_name': 'MLP Features',
+                    'fusion_method': 'ensemble'
+                }
+            run_result['alpha_info'] = alpha_info
+        
+        # GCNAndMLPConcatの場合は隠れ層次元情報も保存
+        elif MODEL_NAME == 'GCNAndMLPConcat':
+            hidden_dims_info = model.get_hidden_dims_info()
+            run_result['hidden_dims_info'] = hidden_dims_info
+        
+        all_results.append(run_result)
+        
+        print(f"実験 {run + 1} 完了:")
+        print(f"  最終結果 - Train: {final_train_acc:.4f}, Val: {final_val_acc:.4f}, Test: {final_test_acc:.4f}")
+        print(f"  ベスト結果 - Val: {best_val_acc:.4f}, Test: {best_test_acc:.4f}")
     
-    # GCNAndMLPConcatの場合は隠れ層次元情報も保存
-    elif MODEL_NAME == 'GCNAndMLPConcat':
-        hidden_dims_info = model.get_hidden_dims_info()
-        run_result['hidden_dims_info'] = hidden_dims_info
+    # 詳細な結果表示
+    print(f"\n=== 詳細結果 ===")
+    for i, result in enumerate(all_results):
+        alpha_info = ""
+        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in result:
+            alpha_info = f", α={result['final_alpha']:.4f}"
+            if 'final_1_minus_alpha' in result:
+                alpha_info += f", 1-α={result['final_1_minus_alpha']:.4f}"
+        
+        noise_info = ""
+        if USE_FEATURE_NOISE and 'noise_info' in result and result['noise_info'] is not None:
+            noise_info = f", ノイズ={result['noise_info'].get('noise_percentage', 0):.1%}"
+        
+        early_stop_info = ""
+        if USE_EARLY_STOPPING and result.get('early_stopped', False):
+            early_stop_info = f", ES@{result.get('early_stopping_epoch', 'N/A')}"
+        
+        print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{noise_info}{early_stop_info}")
     
-    all_results.append(run_result)
-    
-    print(f"実験 {run + 1} 完了:")
-    print(f"  最終結果 - Train: {final_train_acc:.4f}, Val: {final_val_acc:.4f}, Test: {final_test_acc:.4f}")
-    print(f"  ベスト結果 - Val: {best_val_acc:.4f}, Test: {best_test_acc:.4f}")
+    # 結果の集計と表示
+    print(f"\n=== 実験結果統計 ({NUM_RUNS}回の平均) ===")
 
 # ============================================================================
 # 結果の集計と表示
@@ -696,31 +1269,6 @@ if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in a
     print(f"  GCN重み: {np.mean(gcn_weights):.4f} ± {np.std(gcn_weights):.4f}")
     print(f"  MLP重み: {np.mean(mlp_weights):.4f} ± {np.std(mlp_weights):.4f}")
 
-# 詳細な結果表示
-print(f"\n=== 詳細結果 ===")
-for i, result in enumerate(all_results):
-    alpha_info = ""
-    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in result:
-        alpha_info = f", α={result['final_alpha']:.4f}"
-        if 'final_1_minus_alpha' in result:
-            alpha_info += f", 1-α={result['final_1_minus_alpha']:.4f}"
-    
-    noise_info = ""
-    if USE_FEATURE_NOISE and 'noise_info' in result and result['noise_info'] is not None:
-        noise_info = f", ノイズ={result['noise_info'].get('noise_percentage', 0):.1%}"
-    
-    early_stop_info = ""
-    if USE_EARLY_STOPPING and result.get('early_stopped', False):
-        early_stop_info = f", ES@{result.get('early_stopping_epoch', 'N/A')}"
-    
-    print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{noise_info}{early_stop_info}")
-
-print(f"\n=== 実験完了 ===")
-print(f"データセット: {DATASET_NAME}")
-print(f"モデル: {MODEL_NAME}")
-print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
-print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
-
 # Early stopping統計
 if USE_EARLY_STOPPING:
     early_stopped_count = sum(1 for r in all_results if r.get('early_stopped', False))
@@ -737,4 +1285,15 @@ if USE_FEATURE_NOISE:
 # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値情報
 if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:
     print(f"最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}")
-    print(f"最終(1-α)値: {np.mean(final_betas):.4f} ± {np.std(final_betas):.4f}") 
+    print(f"最終(1-α)値: {np.mean(final_betas):.4f} ± {np.std(final_betas):.4f}")
+
+print(f"\n=== 実験完了 ===")
+print(f"データセット: {DATASET_NAME}")
+print(f"モデル: {MODEL_NAME}")
+print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
+print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
+
+# Grid Search結果の最終サマリー
+if USE_GRID_SEARCH and 'grid_search_param' in all_results[0]:
+    best_param = max(all_results, key=lambda x: x['best_val_acc'])['grid_search_param']
+    print(f"最適{GRID_SEARCH_PARAM}: {best_param}")
