@@ -4,6 +4,7 @@ import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
 from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info, create_similarity_based_edges, create_similarity_based_edges_with_original
 from utils.adjacency_creator import create_normalized_adjacency_matrices, get_adjacency_matrix, apply_adjacency_to_features, combine_hop_features, print_adjacency_info
+from utils.feature_noise import add_feature_noise, add_feature_noise_uniform, add_feature_noise_random, print_noise_info
 from models import ModelFactory
 
 # ============================================================================
@@ -16,7 +17,7 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Citeseer'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # モデル選択（MLPまたはGCN）
 # サポートされているモデル:
@@ -29,8 +30,8 @@ DATASET_NAME = 'Citeseer'  # ここを変更してデータセットを切り替
 MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN')
 
 # 実験設定
-NUM_RUNS = 10  # 実験回数
-NUM_EPOCHS = 200  # エポック数
+NUM_RUNS = 30  # 実験回数
+NUM_EPOCHS = 400  # エポック数
 
 # データ分割設定
 TRAIN_RATIO = 0.6  # 訓練データの割合
@@ -38,11 +39,16 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 7       # 最大hop数（1, 2, 3, ...）
+MAX_HOPS = 6       # 最大hop数（1, 2, 3, ...）
 CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
 COMBINE_NEIGHBOR_LABEL_FEATURES = True  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
 TEMPERATURE = 1.5  # 温度パラメータ
 DISABLE_ORIGINAL_FEATURES = True  # True: 元のノード特徴量を無効化（data.xを空にする）
+
+# 特徴量ノイズ追加設定
+USE_FEATURE_NOISE = True  # True: 特徴量にノイズを追加, False: スキップ
+NOISE_PERCENTAGE = 0.2  # ノイズを追加する特徴量の割合 (0.0-1.0) 
+NOISE_TYPE = 'per_node'  # 'uniform': 全ノードで同じ特徴量にノイズ, 'random': 各ノードで独立にノイズ, 'per_node': 各ノードでランダムに特徴量選択
 
 # 類似度ベースエッジ作成設定
 USE_SIMILARITY_BASED_EDGES = False  # True: 類似度ベースエッジ作成を実行, False: スキップ
@@ -53,7 +59,7 @@ SIMILARITY_LABEL_THRESHOLD = 0.9999997  # ラベル分布特徴量の類似度�
 
 # モデルハイパーパラメータ
 HIDDEN_CHANNELS = 64  # 隠れ層の次元
-NUM_LAYERS = 2        # レイヤー数
+NUM_LAYERS = 1        # レイヤー数
 DROPOUT = 0.5         # ドロップアウト率
 
 # GCNAndMLPConcatモデル固有の設定
@@ -102,6 +108,33 @@ if USE_PCA:
 else:
     print(f"\n=== PCA処理をスキップ ===")
     print(f"生の特徴量を使用します: {data.x.shape}")
+
+# 実験前に特徴量にノイズを追加
+if USE_FEATURE_NOISE and data.x.shape[1] > 0:
+    print(f"\n=== 実験前特徴量ノイズ追加 ===")
+    print(f"ノイズタイプ: {NOISE_TYPE}")
+    print(f"ノイズ割合: {NOISE_PERCENTAGE:.1%}")
+    
+    if NOISE_TYPE == 'uniform':
+        # 全ノードで同じ特徴量インデックスにノイズを追加
+        data.x, noise_info = add_feature_noise_uniform(data.x, NOISE_PERCENTAGE, device)
+    elif NOISE_TYPE == 'random':
+        # 各ノード・各特徴量で独立にノイズを追加
+        data.x, noise_info = add_feature_noise_random(data.x, NOISE_PERCENTAGE, device)
+    elif NOISE_TYPE == 'per_node':
+        # 各ノードでランダムに特徴量を選択してノイズを追加
+        data.x, noise_info = add_feature_noise(data.x, NOISE_PERCENTAGE, device)
+    else:
+        print(f"警告: 未知のノイズタイプ '{NOISE_TYPE}' のため、ノイズ追加をスキップします")
+        noise_info = {'noise_percentage': 0.0, 'num_features': data.x.shape[1]}
+    
+    # ノイズ情報を表示
+    print_noise_info(noise_info, DATASET_NAME)
+    print(f"ノイズ追加後の特徴量形状: {data.x.shape}")
+elif USE_FEATURE_NOISE and data.x.shape[1] == 0:
+    print(f"\n=== 実験前特徴量ノイズ追加 ===")
+    print(f"警告: 特徴量が空のため、ノイズ追加をスキップします")
+    noise_info = {'noise_percentage': 0.0, 'num_features': 0, 'noise_type': 'none'}
 
 # 隣接行列を作成
 adjacency_matrices = create_normalized_adjacency_matrices(data, device, max_hops=2)
@@ -158,6 +191,10 @@ print(f"PCA使用: {USE_PCA}")
 print(f"元の特徴量無効化: {DISABLE_ORIGINAL_FEATURES}")
 print(f"隣接ノードラベル特徴量計算: {CALC_NEIGHBOR_LABEL_FEATURES}")
 print(f"隣接ノード特徴量結合: {COMBINE_NEIGHBOR_LABEL_FEATURES}")
+print(f"特徴量ノイズ追加使用: {USE_FEATURE_NOISE}")
+if USE_FEATURE_NOISE:
+    print(f"ノイズ割合: {NOISE_PERCENTAGE:.1%}")
+    print(f"ノイズタイプ: {NOISE_TYPE}")
 print(f"類似度ベースエッジ作成使用: {USE_SIMILARITY_BASED_EDGES}")
 if USE_SIMILARITY_BASED_EDGES:
     print(f"エッジモード: {SIMILARITY_EDGE_MODE}")
@@ -530,6 +567,10 @@ for run in range(NUM_RUNS):
         'best_test_acc': best_test_acc
     }
     
+    # ノイズ情報を保存（実験前のノイズ情報を使用）
+    if USE_FEATURE_NOISE:
+        run_result['noise_info'] = noise_info
+    
     # MLPAndGCNFusion/MLPAndGCNEnsembleの場合はαとβ値も保存
     if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
         final_alpha = get_alpha_value()
@@ -617,13 +658,22 @@ for i, result in enumerate(all_results):
         alpha_info = f", α={result['final_alpha']:.4f}"
         if 'final_1_minus_alpha' in result:
             alpha_info += f", 1-α={result['final_1_minus_alpha']:.4f}"
-    print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}")
+    
+    noise_info = ""
+    if USE_FEATURE_NOISE and 'noise_info' in result and result['noise_info'] is not None:
+        noise_info = f", ノイズ={result['noise_info'].get('noise_percentage', 0):.1%}"
+    
+    print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{noise_info}")
 
 print(f"\n=== 実験完了 ===")
 print(f"データセット: {DATASET_NAME}")
 print(f"モデル: {MODEL_NAME}")
 print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
 print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
+
+# ノイズ情報の統計表示
+if USE_FEATURE_NOISE:
+    print(f"ノイズ設定: タイプ={NOISE_TYPE}, 割合={NOISE_PERCENTAGE:.1%}")
 
 # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値情報
 if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:

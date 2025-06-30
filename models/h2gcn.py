@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class GCNLayer(nn.Module):
@@ -11,24 +10,37 @@ class GCNLayer(nn.Module):
 class H2GCN(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, dropout=0.5, num_layers=1):
         super().__init__()
+        self.num_layers = num_layers
+        self.hidden_channels = hidden_channels
+
+        # Step 1: Initial ego feature embedding
         self.fc1 = nn.Linear(in_channels, hidden_channels, bias=False)
-        self.dropout = nn.Dropout(dropout)
+
+        # Step 2: Shared sparse propagation layers (no weights, no nonlinearity)
         self.gcn_1hop = GCNLayer()
         self.gcn_2hop = GCNLayer()
-        self.fc_out = nn.Linear(3 * hidden_channels, out_channels)
+
+        # Step 3: Output classifier (concat: h0 + h1_1 + h2_1 + ... + h1_K + h2_K)
+        total_concat_dim = (2 * num_layers + 1) * hidden_channels
+        self.fc_out = nn.Linear(total_concat_dim, out_channels)
+
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, adj1, adj2):
-        # Step 1: Ego embedding (non-linear)
-        h0 = self.fc1(x)
-        h0 = self.dropout(h0)
+        # Initial embedding
+        h0 = self.fc1(x)  # shape: [N, H]
 
-        # Step 2: Neighborhood aggregation (no nonlinear, no weight)
-        h1 = self.gcn_1hop(adj1, h0)  # 1-hop neighbors (no self-loops)
-        h2 = self.gcn_2hop(adj2, h0)  # 2-hop neighbors (no self-loops)
+        outputs = [h0]  # list of [h0, h1_1, h2_1, ..., h1_K, h2_K]
+        h_prev = h0
 
-        # Step 3: Combine all representations
-        h = torch.cat([h0, h1, h2], dim=1)
+        for _ in range(self.num_layers):
+            h1 = self.gcn_1hop(adj1, h_prev)  # 1-hop
+            h2 = self.gcn_2hop(adj2, h_prev)  # 2-hop
+            outputs.extend([h1, h2])
+            h_prev = h1  # ← 次のステップの入力には h1 を使う（論文でもこの形）
+
+        # Concatenate all
+        h = torch.cat(outputs, dim=1)
         h = self.dropout(h)
 
-        # Step 4: Classification
         return self.fc_out(h)

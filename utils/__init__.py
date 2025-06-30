@@ -40,6 +40,13 @@ from .adjacency_creator import (
     print_adjacency_info
 )
 
+from .feature_noise import (
+    add_feature_noise,
+    add_feature_noise_uniform,
+    add_feature_noise_random,
+    print_noise_info
+)
+
 __all__ = [
     # feature_creator
     'create_neighbor_lable_features',
@@ -73,5 +80,11 @@ __all__ = [
     'get_adjacency_matrix',
     'apply_adjacency_to_features',
     'combine_hop_features',
-    'print_adjacency_info'
+    'print_adjacency_info',
+    
+    # feature_noise
+    'add_feature_noise',
+    'add_feature_noise_uniform',
+    'add_feature_noise_random',
+    'print_noise_info'
 ] 
