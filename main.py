@@ -27,11 +27,13 @@ DATASET_NAME = 'Texas'  # ここを変更してデータセットを切り替え
 # - 'H2GCN': H2GCN Model (1-hopと2-hopの隣接行列を使用してグラフ構造を学習)
 # - 'MixHop': MixHop Model (異なるべき乗の隣接行列を混合してグラフ畳み込み)
 # - 'GraphSAGE': GraphSAGE Model (帰納的学習による大規模グラフ対応)
-MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'GAT', 'H2GCN', 'MixHop', 'GraphSAGE')
+# - 'GPRGNN': GPR-GNN Model (Generalized PageRank Graph Neural Network)
+# - 'CAS': Correct and Smooth Model (ベースモデルの予測を後処理で改善)
+MODEL_NAME = 'CAS'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'GAT', 'H2GCN', 'MixHop', 'GraphSAGE', 'GPRGNN', 'CAS')
 
 # 実験設定
-NUM_RUNS = 30  # 実験回数
-NUM_EPOCHS = 600  # エポック数
+NUM_RUNS = 3  # 実験回数（テスト用に減らす）
+NUM_EPOCHS = 100  # エポック数（テスト用に減らす）
 
 # データ分割設定
 TRAIN_RATIO = 0.6  # 訓練データの割合
@@ -76,6 +78,17 @@ GRAPHSAGE_AGGR = 'mean'  # 集約関数 ('mean', 'max', 'lstm')
 # GATモデル固有の設定
 GAT_NUM_HEADS = 8  # アテンションヘッド数
 GAT_CONCAT = True  # アテンションヘッドの出力を結合するかどうか
+
+# GPRGNNモデル固有の設定
+GPRGNN_ALPHA = 0.1  # 初期のPageRank係数
+GPRGNN_K = 10       # 伝播ステップ数（= GPRConv の hop 数）
+GPRGNN_INIT = 'PPR' # 重みの初期化方法（'PPR', 'SGC', 'NPPR', 'Random', 'WS' など）
+
+# CASモデル固有の設定
+CAS_BASE_MODEL = 'MLP'  # ベースモデル ('MLP', 'GCN', 'GAT', etc.)
+CAS_ALPHA = 0.5         # 伝播係数 (0.0-1.0)
+CAS_MAX_ITER = 50       # 最大反復回数
+CAS_AUTOSCALE = True    # 自動スケーリングを使用するかどうか
 
 # PCA設定
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
@@ -251,6 +264,20 @@ elif MODEL_NAME == 'GAT':
     print(f"GATモデル作成: アテンション機構を使用したグラフ畳み込み")
     print(f"アテンションヘッド数: {GAT_NUM_HEADS}")
     print(f"ヘッド出力結合: {GAT_CONCAT}")
+elif MODEL_NAME == 'GPRGNN':
+    print(f"GPRGNNモデル作成: Generalized PageRank Graph Neural Network")
+    print(f"PageRank係数: {GPRGNN_ALPHA}")
+    print(f"伝播ステップ数: {GPRGNN_K}")
+    print(f"重み初期化方法: {GPRGNN_INIT}")
+elif MODEL_NAME == 'CAS':
+    print(f"CASモデル作成: Correct and Smooth Model")
+    print(f"ベースモデル: {CAS_BASE_MODEL}")
+    print(f"伝播係数: {CAS_ALPHA}")
+    print(f"最大反復回数: {CAS_MAX_ITER}")
+    print(f"自動スケーリング: {CAS_AUTOSCALE}")
+    print(f"説明: ベースモデルの予測結果を後処理で改善する手法")
+    print(f"  - Correct: 訓練データの誤差をグラフ構造で伝播")
+    print(f"  - Smooth: 修正された予測をグラフ構造で平滑化")
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
 print(f"Early Stopping使用: {USE_EARLY_STOPPING}")
@@ -441,6 +468,34 @@ if USE_GRID_SEARCH:
                 print(f"    レイヤー数: {NUM_LAYERS}")
                 print(f"    ドロップアウト: {DROPOUT}")
             
+            # GPRGNNモデルの場合はパラメータを指定
+            elif MODEL_NAME == 'GPRGNN':
+                model_kwargs.update({
+                    'alpha': GPRGNN_ALPHA,
+                    'K': GPRGNN_K,
+                    'Init': GPRGNN_INIT
+                })
+                
+                print(f"  GPRGNNモデル作成:")
+                print(f"    PageRank係数: {GPRGNN_ALPHA}")
+                print(f"    伝播ステップ数: {GPRGNN_K}")
+                print(f"    重み初期化方法: {GPRGNN_INIT}")
+            
+            # CASモデルの場合はパラメータを指定
+            elif MODEL_NAME == 'CAS':
+                model_kwargs.update({
+                    'base_model': CAS_BASE_MODEL,
+                    'alpha': CAS_ALPHA,
+                    'max_iter': CAS_MAX_ITER,
+                    'autoscale': CAS_AUTOSCALE
+                })
+                
+                print(f"  CASモデル作成:")
+                print(f"    ベースモデル: {CAS_BASE_MODEL}")
+                print(f"    伝播係数: {CAS_ALPHA}")
+                print(f"    最大反復回数: {CAS_MAX_ITER}")
+                print(f"    自動スケーリング: {CAS_AUTOSCALE}")
+            
             model = ModelFactory.create_model(**model_kwargs).to(device)
             
             optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -453,7 +508,6 @@ if USE_GRID_SEARCH:
                 # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
                 if MODEL_NAME == 'H2GCN':
                     out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-
                 else:
                     # その他のモデルは標準的な処理
                     out = model(run_data.x, run_data.edge_index)
@@ -471,12 +525,32 @@ if USE_GRID_SEARCH:
                 # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
                 if MODEL_NAME == 'H2GCN':
                     out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-
                 else:
                     # その他のモデルは標準的な処理
                     out = model(run_data.x, run_data.edge_index)
                 
                 pred = out.argmax(dim=1)
+                accs = []
+                for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
+                    correct = pred[mask] == run_data.y[mask]
+                    accs.append(int(correct.sum()) / int(mask.sum()))
+                return accs
+            
+            # CASモデル用の特別な評価関数
+            @torch.no_grad()
+            def test_with_cas():
+                model.eval()
+                
+                # ベースモデルの予測を取得
+                if MODEL_NAME == 'H2GCN':
+                    base_pred = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                else:
+                    base_pred = model(run_data.x, run_data.edge_index)
+                
+                # CAS後処理を実行
+                cas_pred = model.correct_and_smooth(run_data, base_pred)
+                
+                pred = cas_pred.argmax(dim=1)
                 accs = []
                 for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
                     correct = pred[mask] == run_data.y[mask]
@@ -498,7 +572,12 @@ if USE_GRID_SEARCH:
             
             for epoch in range(NUM_EPOCHS + 1):
                 loss = train()
-                train_acc, val_acc, test_acc = test()
+                
+                # CASモデルの場合は特別な評価関数を使用
+                if MODEL_NAME == 'CAS':
+                    train_acc, val_acc, test_acc = test_with_cas()
+                else:
+                    train_acc, val_acc, test_acc = test()
                 
                 # ベスト結果を記録
                 if val_acc > best_val_acc:
@@ -817,6 +896,34 @@ else:
             print(f"    レイヤー数: {NUM_LAYERS}")
             print(f"    ドロップアウト: {DROPOUT}")
         
+        # GPRGNNモデルの場合はパラメータを指定
+        elif MODEL_NAME == 'GPRGNN':
+            model_kwargs.update({
+                'alpha': GPRGNN_ALPHA,
+                'K': GPRGNN_K,
+                'Init': GPRGNN_INIT
+            })
+            
+            print(f"  GPRGNNモデル作成:")
+            print(f"    PageRank係数: {GPRGNN_ALPHA}")
+            print(f"    伝播ステップ数: {GPRGNN_K}")
+            print(f"    重み初期化方法: {GPRGNN_INIT}")
+        
+        # CASモデルの場合はパラメータを指定
+        elif MODEL_NAME == 'CAS':
+            model_kwargs.update({
+                'base_model': CAS_BASE_MODEL,
+                'alpha': CAS_ALPHA,
+                'max_iter': CAS_MAX_ITER,
+                'autoscale': CAS_AUTOSCALE
+            })
+            
+            print(f"  CASモデル作成:")
+            print(f"    ベースモデル: {CAS_BASE_MODEL}")
+            print(f"    伝播係数: {CAS_ALPHA}")
+            print(f"    最大反復回数: {CAS_MAX_ITER}")
+            print(f"    自動スケーリング: {CAS_AUTOSCALE}")
+        
         model = ModelFactory.create_model(**model_kwargs).to(device)
         
         optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -846,12 +953,32 @@ else:
             # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
             if MODEL_NAME == 'H2GCN':
                 out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-
             else:
                 # その他のモデルは標準的な処理
                 out = model(run_data.x, run_data.edge_index)
             
             pred = out.argmax(dim=1)
+            accs = []
+            for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
+                correct = pred[mask] == run_data.y[mask]
+                accs.append(int(correct.sum()) / int(mask.sum()))
+            return accs
+        
+        # CASモデル用の特別な評価関数
+        @torch.no_grad()
+        def test_with_cas():
+            model.eval()
+            
+            # ベースモデルの予測を取得
+            if MODEL_NAME == 'H2GCN':
+                base_pred = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+            else:
+                base_pred = model(run_data.x, run_data.edge_index)
+            
+            # CAS後処理を実行
+            cas_pred = model.correct_and_smooth(run_data, base_pred)
+            
+            pred = cas_pred.argmax(dim=1)
             accs = []
             for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
                 correct = pred[mask] == run_data.y[mask]
@@ -873,7 +1000,12 @@ else:
         
         for epoch in range(NUM_EPOCHS + 1):
             loss = train()
-            train_acc, val_acc, test_acc = test()
+            
+            # CASモデルの場合は特別な評価関数を使用
+            if MODEL_NAME == 'CAS':
+                train_acc, val_acc, test_acc = test_with_cas()
+            else:
+                train_acc, val_acc, test_acc = test()
             
             # ベスト結果を記録
             if val_acc > best_val_acc:

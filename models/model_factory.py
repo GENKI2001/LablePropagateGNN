@@ -6,6 +6,8 @@ from .mlp import MLP
 from .h2gcn import H2GCN
 from .mixhop import MixHop
 from .graphsage import GraphSAGE
+from .gprgnn import GPRGNN
+from .cas import CAS
 
 class ModelFactory:
     """
@@ -117,6 +119,32 @@ class ModelFactory:
                 aggr=aggr
             )
         
+        elif model_name == 'GPRGNN':
+            alpha = kwargs.get('alpha', 0.1)
+            K = kwargs.get('K', 10)
+            Init = kwargs.get('Init', 'PPR')
+            return GPRGNN(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                num_layers=default_params['num_layers'],
+                dropout=default_params['dropout'],
+                alpha=alpha,
+                K=K,
+                Init=Init
+            )
+        
+        elif model_name == 'CAS':
+            # CASモデルの場合、ベースモデルを指定する必要がある
+            base_model_name = kwargs.get('base_model', 'MLP')
+            base_model = ModelFactory.create_model(
+                base_model_name, in_channels, hidden_channels, out_channels, **kwargs
+            )
+            alpha = kwargs.get('alpha', 0.5)
+            max_iter = kwargs.get('max_iter', 50)
+            autoscale = kwargs.get('autoscale', True)
+            return CAS(base_model, alpha=alpha, max_iter=max_iter, autoscale=autoscale)
+        
         else:
             raise ValueError(f"Unsupported model: {model_name}")
     
@@ -167,6 +195,16 @@ class ModelFactory:
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'aggr'],
                 'default_hidden_channels': 16
             },
+            'GPRGNN': {
+                'description': 'GPR-GNN Model (Generalized PageRank Graph Neural Network)',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'alpha', 'K', 'Init'],
+                'default_hidden_channels': 16
+            },
+            'CAS': {
+                'description': 'Correct and Smooth (CAS) Model - post-processing for improving base model predictions',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'base_model', 'alpha', 'max_iter', 'autoscale'],
+                'default_hidden_channels': 16
+            },
         }
         
         return model_info.get(model_name, {})
@@ -179,4 +217,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GAT', 'MLP', 'LINKX', 'H2GCN', 'MixHop', 'GraphSAGE'] 
+        return ['GCN', 'GAT', 'MLP', 'LINKX', 'H2GCN', 'MixHop', 'GraphSAGE', 'GPRGNN', 'CAS'] 
