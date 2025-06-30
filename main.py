@@ -27,7 +27,9 @@ DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替�
 # - 'MLPAndGCNEnsemble': MLP-GCN Ensemble Model (MLPとGCNを独立実行しアンサンブル)
 # - 'GCNAndMLPConcat': GCN-MLP Concat Model (GCNで生の特徴量、MLPで生の特徴量+ラベル分布特徴量を処理)
 # - 'H2GCN': H2GCN Model (1-hopと2-hopの隣接行列を使用してグラフ構造を学習)
-MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN')
+# - 'MixHop': MixHop Model (異なるべき乗の隣接行列を混合してグラフ畳み込み)
+# - 'MixHopWithSkip': MixHop Model with Skip Connections (Skip接続付きMixHop)
+MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN', 'MixHop', 'MixHopWithSkip')
 
 # 実験設定
 NUM_RUNS = 30  # 実験回数
@@ -74,6 +76,9 @@ MLP_HIDDEN_DIM = 16   # MLPの隠れ層次元（Noneの場合はHIDDEN_CHANNELS�
 # MLP-GCNハイブリッドモデル設定
 FUSION_METHOD = 'concat_alpha'  # 'concat', 'add', 'weighted', 'concat_alpha'
 ENSEMBLE_METHOD = 'concat_alpha'  # 'average', 'weighted', 'voting', 'concat_alpha'
+
+# MixHopモデル固有の設定
+MIXHOP_POWERS = [0, 1, 2]  # 隣接行列のべき乗のリスト [0, 1, 2] または [0, 1, 2, 3] など
 
 # PCA設定
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
@@ -236,6 +241,12 @@ elif MODEL_NAME == 'H2GCN':
     print(f"H2GCNモデル作成: 1-hopと2-hopの隣接行列を使用してグラフ構造を学習")
     print(f"1-hop隣接行列: {data.adj_1hop.shape}")
     print(f"2-hop隣接行列: {data.adj_2hop.shape}")
+elif MODEL_NAME == 'MixHop':
+    print(f"MixHopモデル作成: 異なるべき乗の隣接行列を混合してグラフ畳み込み")
+    print(f"べき乗リスト: {MIXHOP_POWERS}")
+elif MODEL_NAME == 'MixHopWithSkip':
+    print(f"MixHopWithSkipモデル作成: Skip接続付きMixHop")
+    print(f"べき乗リスト: {MIXHOP_POWERS}")
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
 print(f"Early Stopping使用: {USE_EARLY_STOPPING}")
@@ -439,6 +450,18 @@ if USE_GRID_SEARCH:
                 print(f"    総特徴量次元: {actual_feature_dim}")
                 print(f"    GCN隠れ層次元: {GCN_HIDDEN_DIM}")
                 print(f"    MLP隠れ層次元: {MLP_HIDDEN_DIM}")
+            
+            # MixHopモデルの場合はべき乗パラメータを指定
+            elif MODEL_NAME in ['MixHop', 'MixHopWithSkip']:
+                model_kwargs.update({
+                    'powers': MIXHOP_POWERS
+                })
+                
+                print(f"  {MODEL_NAME}モデル作成:")
+                print(f"    べき乗リスト: {MIXHOP_POWERS}")
+                print(f"    隠れ層次元: {default_hidden_channels}")
+                print(f"    レイヤー数: {NUM_LAYERS}")
+                print(f"    ドロップアウト: {DROPOUT}")
             
             model = ModelFactory.create_model(**model_kwargs).to(device)
             
@@ -956,6 +979,18 @@ else:
             print(f"    総特徴量次元: {actual_feature_dim}")
             print(f"    GCN隠れ層次元: {GCN_HIDDEN_DIM}")
             print(f"    MLP隠れ層次元: {MLP_HIDDEN_DIM}")
+        
+        # MixHopモデルの場合はべき乗パラメータを指定
+        elif MODEL_NAME in ['MixHop', 'MixHopWithSkip']:
+            model_kwargs.update({
+                'powers': MIXHOP_POWERS
+            })
+            
+            print(f"  {MODEL_NAME}モデル作成:")
+            print(f"    べき乗リスト: {MIXHOP_POWERS}")
+            print(f"    隠れ層次元: {default_hidden_channels}")
+            print(f"    レイヤー数: {NUM_LAYERS}")
+            print(f"    ドロップアウト: {DROPOUT}")
         
         model = ModelFactory.create_model(**model_kwargs).to(device)
         
