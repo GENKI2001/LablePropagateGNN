@@ -1,10 +1,11 @@
 import torch
 from torch_geometric.nn import LINKX
-from .gcn import GCN, GCNWithSkip
-from .gat import GAT, GATWithSkip, GATv2
+from .gcn import GCN
+from .gat import GAT
 from .mlp import MLP
 from .h2gcn import H2GCN
 from .mixhop import MixHop
+from .graphsage import GraphSAGE
 
 class ModelFactory:
     """
@@ -18,7 +19,7 @@ class ModelFactory:
         モデルを作成する
         
         Args:
-            model_name (str): モデル名 ('GCN', 'GAT', 'GATv2', etc.)
+            model_name (str): モデル名 ('GCN', 'GAT', etc.)
             in_channels (int): 入力特徴量の次元
             hidden_channels (int): 隠れ層の次元
             out_channels (int): 出力特徴量の次元
@@ -51,39 +52,8 @@ class ModelFactory:
                 dropout=default_params['dropout']
             )
         
-        elif model_name == 'GCNWithSkip':
-            return GCNWithSkip(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-                num_layers=default_params['num_layers'],
-                dropout=default_params['dropout']
-            )
-        
         elif model_name == 'GAT':
             return GAT(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-                num_layers=default_params['num_layers'],
-                num_heads=default_params['num_heads'],
-                dropout=default_params['dropout'],
-                concat=default_params['concat']
-            )
-        
-        elif model_name == 'GATWithSkip':
-            return GATWithSkip(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-                num_layers=default_params['num_layers'],
-                num_heads=default_params['num_heads'],
-                dropout=default_params['dropout'],
-                concat=default_params['concat']
-            )
-        
-        elif model_name == 'GATv2':
-            return GATv2(
                 in_channels=in_channels,
                 hidden_channels=hidden_channels,
                 out_channels=out_channels,
@@ -136,6 +106,17 @@ class ModelFactory:
                 powers=powers
             )
         
+        elif model_name == 'GraphSAGE':
+            aggr = kwargs.get('aggr', 'mean')
+            return GraphSAGE(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                num_layers=default_params['num_layers'],
+                dropout=default_params['dropout'],
+                aggr=aggr
+            )
+        
         else:
             raise ValueError(f"Unsupported model: {model_name}")
     
@@ -156,23 +137,8 @@ class ModelFactory:
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
             },
-            'GCNWithSkip': {
-                'description': 'GCN with Skip Connections',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
-                'default_hidden_channels': 16
-            },
             'GAT': {
                 'description': 'Graph Attention Network',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'num_heads', 'dropout', 'concat'],
-                'default_hidden_channels': 8
-            },
-            'GATWithSkip': {
-                'description': 'GAT with Skip Connections',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'num_heads', 'dropout', 'concat'],
-                'default_hidden_channels': 8
-            },
-            'GATv2': {
-                'description': 'Improved Graph Attention Network',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'num_heads', 'dropout', 'concat'],
                 'default_hidden_channels': 8
             },
@@ -196,6 +162,11 @@ class ModelFactory:
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'powers'],
                 'default_hidden_channels': 16
             },
+            'GraphSAGE': {
+                'description': 'GraphSAGE Model (inductive learning on large graphs)',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'aggr'],
+                'default_hidden_channels': 16
+            },
         }
         
         return model_info.get(model_name, {})
@@ -208,4 +179,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GCNWithSkip', 'GAT', 'GATWithSkip', 'GATv2', 'MLP', 'LINKX', 'H2GCN', 'MixHop'] 
+        return ['GCN', 'GAT', 'MLP', 'LINKX', 'H2GCN', 'MixHop', 'GraphSAGE'] 

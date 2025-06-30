@@ -26,7 +26,8 @@ DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替�
 # - 'H2GCN': H2GCN Model (1-hopと2-hopの隣接行列を使用してグラフ構造を学習)
 # - 'MixHop': MixHop Model (異なるべき乗の隣接行列を混合してグラフ畳み込み)
 # - 'MixHopWithSkip': MixHop Model with Skip Connections (Skip接続付きMixHop)
-MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'H2GCN', 'MixHop', 'MixHopWithSkip')
+# - 'GraphSAGE': GraphSAGE Model (帰納的学習による大規模グラフ対応)
+MODEL_NAME = 'GraphSAGE'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'H2GCN', 'MixHop', 'MixHopWithSkip', 'GraphSAGE')
 
 # 実験設定
 NUM_RUNS = 30  # 実験回数
@@ -39,13 +40,13 @@ TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
 MAX_HOPS = 6       # 最大hop数（1, 2, 3, ...）
-CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
-COMBINE_NEIGHBOR_LABEL_FEATURES = True  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
+CALC_NEIGHBOR_LABEL_FEATURES = False  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
+COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
 TEMPERATURE = 1.5  # 温度パラメータ
-DISABLE_ORIGINAL_FEATURES = True  # True: 元のノード特徴量を無効化（data.xを空にする）
+DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
 
 # Grid Search設定
-USE_GRID_SEARCH = True  # True: Grid searchを実行, False: 単一パラメータで実行
+USE_GRID_SEARCH = False  # True: Grid searchを実行, False: 単一パラメータで実行
 GRID_SEARCH_PARAM = 'MAX_HOPS'  # Grid search対象パラメータ
 GRID_SEARCH_VALUES = [1, 2, 3, 4, 5, 6]  # Grid searchで試す値
 
@@ -76,6 +77,9 @@ ENSEMBLE_METHOD = 'concat_alpha'  # 'average', 'weighted', 'voting', 'concat_alp
 
 # MixHopモデル固有の設定
 MIXHOP_POWERS = [0, 1, 2]  # 隣接行列のべき乗のリスト [0, 1, 2] または [0, 1, 2, 3] など
+
+# GraphSAGEモデル固有の設定
+GRAPHSAGE_AGGR = 'mean'  # 集約関数 ('mean', 'max', 'lstm')
 
 # PCA設定
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
@@ -244,6 +248,9 @@ elif MODEL_NAME == 'MixHop':
 elif MODEL_NAME == 'MixHopWithSkip':
     print(f"MixHopWithSkipモデル作成: Skip接続付きMixHop")
     print(f"べき乗リスト: {MIXHOP_POWERS}")
+elif MODEL_NAME == 'GraphSAGE':
+    print(f"GraphSAGEモデル作成: 帰納的学習による大規模グラフ対応")
+    print(f"集約関数: {GRAPHSAGE_AGGR}")
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
 print(f"Early Stopping使用: {USE_EARLY_STOPPING}")
@@ -456,6 +463,18 @@ if USE_GRID_SEARCH:
                 
                 print(f"  {MODEL_NAME}モデル作成:")
                 print(f"    べき乗リスト: {MIXHOP_POWERS}")
+                print(f"    隠れ層次元: {default_hidden_channels}")
+                print(f"    レイヤー数: {NUM_LAYERS}")
+                print(f"    ドロップアウト: {DROPOUT}")
+            
+            # GraphSAGEモデルの場合は集約関数パラメータを指定
+            elif MODEL_NAME == 'GraphSAGE':
+                model_kwargs.update({
+                    'aggr': GRAPHSAGE_AGGR
+                })
+                
+                print(f"  GraphSAGEモデル作成:")
+                print(f"    集約関数: {GRAPHSAGE_AGGR}")
                 print(f"    隠れ層次元: {default_hidden_channels}")
                 print(f"    レイヤー数: {NUM_LAYERS}")
                 print(f"    ドロップアウト: {DROPOUT}")
@@ -985,6 +1004,18 @@ else:
             
             print(f"  {MODEL_NAME}モデル作成:")
             print(f"    べき乗リスト: {MIXHOP_POWERS}")
+            print(f"    隠れ層次元: {default_hidden_channels}")
+            print(f"    レイヤー数: {NUM_LAYERS}")
+            print(f"    ドロップアウト: {DROPOUT}")
+        
+        # GraphSAGEモデルの場合は集約関数パラメータを指定
+        elif MODEL_NAME == 'GraphSAGE':
+            model_kwargs.update({
+                'aggr': GRAPHSAGE_AGGR
+            })
+            
+            print(f"  GraphSAGEモデル作成:")
+            print(f"    集約関数: {GRAPHSAGE_AGGR}")
             print(f"    隠れ層次元: {default_hidden_channels}")
             print(f"    レイヤー数: {NUM_LAYERS}")
             print(f"    ドロップアウト: {DROPOUT}")
