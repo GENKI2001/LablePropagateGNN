@@ -25,9 +25,8 @@ DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替�
 # - 'GCN': Graph Convolutional Network (グラフ構造を活用)
 # - 'H2GCN': H2GCN Model (1-hopと2-hopの隣接行列を使用してグラフ構造を学習)
 # - 'MixHop': MixHop Model (異なるべき乗の隣接行列を混合してグラフ畳み込み)
-# - 'MixHopWithSkip': MixHop Model with Skip Connections (Skip接続付きMixHop)
 # - 'GraphSAGE': GraphSAGE Model (帰納的学習による大規模グラフ対応)
-MODEL_NAME = 'GraphSAGE'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'H2GCN', 'MixHop', 'MixHopWithSkip', 'GraphSAGE')
+MODEL_NAME = 'MixHop'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'H2GCN', 'MixHop', 'GraphSAGE')
 
 # 実験設定
 NUM_RUNS = 30  # 実験回数
@@ -66,14 +65,6 @@ SIMILARITY_LABEL_THRESHOLD = 0.9999997  # ラベル分布特徴量の類似度�
 HIDDEN_CHANNELS = 12  # 隠れ層の次元
 NUM_LAYERS = 1        # レイヤー数
 DROPOUT = 0.5         # ドロップアウト率
-
-# GCNAndMLPConcatモデル固有の設定
-GCN_HIDDEN_DIM = 16   # GCNの隠れ層次元（Noneの場合はHIDDEN_CHANNELSを使用）
-MLP_HIDDEN_DIM = 16   # MLPの隠れ層次元（Noneの場合はHIDDEN_CHANNELSを使用）
-
-# MLP-GCNハイブリッドモデル設定
-FUSION_METHOD = 'concat_alpha'  # 'concat', 'add', 'weighted', 'concat_alpha'
-ENSEMBLE_METHOD = 'concat_alpha'  # 'average', 'weighted', 'voting', 'concat_alpha'
 
 # MixHopモデル固有の設定
 MIXHOP_POWERS = [0, 1, 2]  # 隣接行列のべき乗のリスト [0, 1, 2] または [0, 1, 2, 3] など
@@ -162,6 +153,16 @@ adj_2hop = get_adjacency_matrix(adjacency_matrices, 2)
 # 隣接行列をデータオブジェクトに追加
 data.adj_1hop = adj_1hop
 data.adj_2hop = adj_2hop
+# 隣接行列を作成
+adjacency_matrices = create_normalized_adjacency_matrices(data, device, max_hops=2)
+
+# 特定のhopの隣接行列を取得
+adj_1hop = get_adjacency_matrix(adjacency_matrices, 1)
+adj_2hop = get_adjacency_matrix(adjacency_matrices, 2)
+
+# 隣接行列をデータオブジェクトに追加
+data.adj_1hop = adj_1hop
+data.adj_2hop = adj_2hop
 
 # 類似度ベースエッジ生成（dataに保存）
 if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw':
@@ -228,25 +229,12 @@ if USE_SIMILARITY_BASED_EDGES:
 print(f"隠れ層次元: {default_hidden_channels}")
 print(f"レイヤー数: {NUM_LAYERS}")
 print(f"ドロップアウト: {DROPOUT}")
-if MODEL_NAME == 'MLPAndGCNFusion':
-    print(f"融合方法: {FUSION_METHOD}")
-elif MODEL_NAME == 'MLPAndGCNEnsemble':
-    print(f"アンサンブル方法: {ENSEMBLE_METHOD}")
-    if ENSEMBLE_METHOD == 'concat_alpha':
-        print(f"    学習可能パラメータ: α (GCN重み), 1-α (MLP重み)")
-elif MODEL_NAME == 'GCNAndMLPConcat':
-    print(f"GCNAndMLPConcatモデル作成: GCNで生の特徴量、MLPで生の特徴量+ラベル分布特徴量を処理")
-    print(f"GCN隠れ層次元: {GCN_HIDDEN_DIM}")
-    print(f"MLP隠れ層次元: {MLP_HIDDEN_DIM}")
-elif MODEL_NAME == 'H2GCN':
+if MODEL_NAME == 'H2GCN':
     print(f"H2GCNモデル作成: 1-hopと2-hopの隣接行列を使用してグラフ構造を学習")
     print(f"1-hop隣接行列: {data.adj_1hop.shape}")
     print(f"2-hop隣接行列: {data.adj_2hop.shape}")
 elif MODEL_NAME == 'MixHop':
     print(f"MixHopモデル作成: 異なるべき乗の隣接行列を混合してグラフ畳み込み")
-    print(f"べき乗リスト: {MIXHOP_POWERS}")
-elif MODEL_NAME == 'MixHopWithSkip':
-    print(f"MixHopWithSkipモデル作成: Skip接続付きMixHop")
     print(f"べき乗リスト: {MIXHOP_POWERS}")
 elif MODEL_NAME == 'GraphSAGE':
     print(f"GraphSAGEモデル作成: 帰納的学習による大規模グラフ対応")
@@ -403,60 +391,8 @@ if USE_GRID_SEARCH:
                 'dropout': DROPOUT
             }
             
-            # MLPAndGCNFusionの場合は融合方法を指定
-            if MODEL_NAME == 'MLPAndGCNFusion':
-                model_kwargs.update({
-                    'fusion_method': FUSION_METHOD
-                })
-                print(f"  MLPAndGCNFusionモデル作成:")
-                print(f"    融合方法: {FUSION_METHOD}")
-                if FUSION_METHOD == 'concat_alpha':
-                    print(f"    学習可能パラメータ: α (GCN重み), 1-α (MLP重み)")
-            
-            # MLPAndGCNEnsembleの場合は特別な処理
-            elif MODEL_NAME == 'MLPAndGCNEnsemble':
-                # 生の特徴量とラベル分布特徴量を分離
-                if USE_PCA:
-                    raw_features = run_data.x[:, :PCA_COMPONENTS]
-                else:
-                    raw_features = run_data.x[:, :dataset.num_features]
-                
-                if neighbor_label_features is not None and CALC_NEIGHBOR_LABEL_FEATURES:
-                    # ラベル分布特徴量 + 生の特徴量を結合
-                    label_features = torch.cat([neighbor_label_features, raw_features], dim=1)
-                else:
-                    # 生の特徴量のみを使用
-                    label_features = raw_features
-                
-                out = model(raw_features, label_features, run_data.edge_index)
-            
-            # GCNAndMLPConcatの場合は、生の特徴量とラベル分布特徴量の次元を指定
-            elif MODEL_NAME == 'GCNAndMLPConcat':
-                # 元の特徴量次元（PCA処理前の生の特徴量）
-                if USE_PCA:
-                    raw_feature_dim = PCA_COMPONENTS
-                else:
-                    raw_feature_dim = dataset.num_features
-                
-                # ラベル分布特徴量の次元
-                label_dist_dim = neighbor_label_features.shape[1] if neighbor_label_features is not None else 0
-                
-                model_kwargs.update({
-                    'xfeat_dim': raw_feature_dim,  # 生の特徴量の次元
-                    'xlabel_dim': label_dist_dim,  # ラベル分布特徴量の次元
-                    'gcn_hidden_dim': GCN_HIDDEN_DIM,  # GCNの隠れ層次元
-                    'mlp_hidden_dim': MLP_HIDDEN_DIM   # MLPの隠れ層次元
-                })
-                
-                print(f"  GCNAndMLPConcatモデル作成:")
-                print(f"    生の特徴量次元: {raw_feature_dim}")
-                print(f"    ラベル分布特徴量次元: {label_dist_dim}")
-                print(f"    総特徴量次元: {actual_feature_dim}")
-                print(f"    GCN隠れ層次元: {GCN_HIDDEN_DIM}")
-                print(f"    MLP隠れ層次元: {MLP_HIDDEN_DIM}")
-            
             # MixHopモデルの場合はべき乗パラメータを指定
-            elif MODEL_NAME in ['MixHop', 'MixHopWithSkip']:
+            if MODEL_NAME in ['MixHop']:
                 model_kwargs.update({
                     'powers': MIXHOP_POWERS
                 })
@@ -491,34 +427,7 @@ if USE_GRID_SEARCH:
                 # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
                 if MODEL_NAME == 'H2GCN':
                     out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-                # GCNAndMLPConcatの場合は特別な処理
-                elif MODEL_NAME == 'GCNAndMLPConcat':
-                    # 生の特徴量とラベル分布特徴量を分離
-                    if USE_PCA:
-                        raw_features = run_data.x[:, :PCA_COMPONENTS]
-                    else:
-                        raw_features = run_data.x[:, :dataset.num_features]
-                    
-                    if neighbor_label_features is not None:
-                        label_features = neighbor_label_features
-                    else:
-                        label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-                    
-                    out = model(raw_features, label_features, run_data.edge_index)
-                # MLPAndGCNEnsembleの場合は特別な処理
-                elif MODEL_NAME == 'MLPAndGCNEnsemble':
-                    # 生の特徴量とラベル分布特徴量を分離
-                    if USE_PCA:
-                        raw_features = run_data.x[:, :PCA_COMPONENTS]
-                    else:
-                        raw_features = run_data.x[:, :dataset.num_features]
-                    
-                    if neighbor_label_features is not None:
-                        label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
-                    else:
-                        label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-                    
-                    out = model(raw_features, label_features, run_data.edge_index)
+
                 else:
                     # その他のモデルは標準的な処理
                     out = model(run_data.x, run_data.edge_index)
@@ -536,34 +445,7 @@ if USE_GRID_SEARCH:
                 # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
                 if MODEL_NAME == 'H2GCN':
                     out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-                # GCNAndMLPConcatの場合は特別な処理
-                elif MODEL_NAME == 'GCNAndMLPConcat':
-                    # 生の特徴量とラベル分布特徴量を分離
-                    if USE_PCA:
-                        raw_features = run_data.x[:, :PCA_COMPONENTS]
-                    else:
-                        raw_features = run_data.x[:, :dataset.num_features]
-                    
-                    if neighbor_label_features is not None:
-                        label_features = neighbor_label_features
-                    else:
-                        label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-                    
-                    out = model(raw_features, label_features, run_data.edge_index)
-                # MLPAndGCNEnsembleの場合は特別な処理
-                elif MODEL_NAME == 'MLPAndGCNEnsemble':
-                    # 生の特徴量とラベル分布特徴量を分離
-                    if USE_PCA:
-                        raw_features = run_data.x[:, :PCA_COMPONENTS]
-                    else:
-                        raw_features = run_data.x[:, :dataset.num_features]
-                    
-                    if neighbor_label_features is not None:
-                        label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
-                    else:
-                        label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-                    
-                    out = model(raw_features, label_features, run_data.edge_index)
+
                 else:
                     # その他のモデルは標準的な処理
                     out = model(run_data.x, run_data.edge_index)
@@ -574,18 +456,6 @@ if USE_GRID_SEARCH:
                     correct = pred[mask] == run_data.y[mask]
                     accs.append(int(correct.sum()) / int(mask.sum()))
                 return accs
-            
-            # α値を取得する関数
-            def get_alpha_value():
-                if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
-                    return torch.clamp(model.alpha, 0, 1).item()
-                return None
-            
-            # β値を取得する関数
-            def get_beta_value():
-                if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
-                    return torch.clamp(1 - model.alpha, 0, 1).item()
-                return None
             
             # 学習実行
             best_val_acc = 0
@@ -632,13 +502,6 @@ if USE_GRID_SEARCH:
                 # 進捗表示
                 if epoch % DISPLAY_PROGRESS_EVERY == 0:
                     alpha_info = ""
-                    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-                        alpha_val = get_alpha_value()
-                        beta_val = get_beta_value()
-                        if alpha_val is not None and beta_val is not None:
-                            alpha_info = f", α={alpha_val:.4f}, 1-α={beta_val:.4f}"
-                        elif alpha_val is not None:
-                            alpha_info = f", α={alpha_val:.4f}"
                     
                     early_stop_info = ""
                     if USE_EARLY_STOPPING:
@@ -651,23 +514,6 @@ if USE_GRID_SEARCH:
                 final_train_acc = train_acc
                 final_val_acc = val_acc
                 final_test_acc = test_acc
-            
-            # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値を表示
-            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-                final_alpha = get_alpha_value()
-                final_beta = get_beta_value()
-                if final_alpha is not None or final_beta is not None:
-                    print(f"\n=== {MODEL_NAME} 最終α・(1-α)値 ===")
-                    if hasattr(model, 'print_alpha_info'):
-                        model.print_alpha_info()
-                    else:
-                        print(f"α (GCN重み): {final_alpha:.4f}")
-                        print(f"(1-α) (MLP重み): {final_beta:.4f}")
-            
-            # GCNAndMLPConcatモデルの最終隠れ層次元情報を表示
-            elif MODEL_NAME == 'GCNAndMLPConcat':
-                print(f"\n=== GCNAndMLPConcat 最終隠れ層次元情報 ===")
-                model.print_hidden_dims_info()
             
             # 結果を保存
             run_result = {
@@ -689,38 +535,6 @@ if USE_GRID_SEARCH:
                 run_result['early_stopping_epoch'] = epoch if early_stopped else NUM_EPOCHS
                 run_result['early_stopping_patience'] = EARLY_STOPPING_PATIENCE
                 run_result['early_stopping_min_delta'] = EARLY_STOPPING_MIN_DELTA
-            
-            # MLPAndGCNFusion/MLPAndGCNEnsembleの場合はαとβ値も保存
-            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-                final_alpha = get_alpha_value()
-                final_beta = get_beta_value()
-                if final_alpha is not None:
-                    run_result['final_alpha'] = final_alpha
-                if final_beta is not None:
-                    run_result['final_1_minus_alpha'] = final_beta
-                
-                # α情報を取得
-                if MODEL_NAME == 'MLPAndGCNFusion' and hasattr(model, 'get_alpha_info'):
-                    alpha_info = model.get_alpha_info()
-                elif MODEL_NAME == 'MLPAndGCNEnsemble' and hasattr(model, 'get_alpha_info'):
-                    alpha_info = model.get_alpha_info()
-                else:
-                    # フォールバック用のα情報
-                    alpha_info = {
-                        'alpha': final_alpha,
-                        'beta': final_beta,
-                        'gcn_weight': final_alpha,
-                        'mlp_weight': final_beta,
-                        'gcn_name': 'GCN Features',
-                        'mlp_name': 'MLP Features',
-                        'fusion_method': 'ensemble'
-                    }
-                run_result['alpha_info'] = alpha_info
-            
-            # GCNAndMLPConcatの場合は隠れ層次元情報も保存
-            elif MODEL_NAME == 'GCNAndMLPConcat':
-                hidden_dims_info = model.get_hidden_dims_info()
-                run_result['hidden_dims_info'] = hidden_dims_info
             
             param_results.append(run_result)
             
@@ -798,10 +612,6 @@ if USE_GRID_SEARCH:
     print(f"\n=== 詳細結果 ===")
     for i, result in enumerate(all_results):
         alpha_info = ""
-        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in result:
-            alpha_info = f", α={result['final_alpha']:.4f}"
-            if 'final_1_minus_alpha' in result:
-                alpha_info += f", 1-α={result['final_1_minus_alpha']:.4f}"
         
         noise_info = ""
         if USE_FEATURE_NOISE and 'noise_info' in result and result['noise_info'] is not None:
@@ -943,61 +753,8 @@ else:
             'num_layers': NUM_LAYERS,
             'dropout': DROPOUT
         }
-        
-        # MLPAndGCNFusionの場合は融合方法を指定
-        if MODEL_NAME == 'MLPAndGCNFusion':
-            model_kwargs.update({
-                'fusion_method': FUSION_METHOD
-            })
-            print(f"  MLPAndGCNFusionモデル作成:")
-            print(f"    融合方法: {FUSION_METHOD}")
-            if FUSION_METHOD == 'concat_alpha':
-                print(f"    学習可能パラメータ: α (GCN重み), 1-α (MLP重み)")
-        
-        # MLPAndGCNEnsembleの場合は特別な処理
-        elif MODEL_NAME == 'MLPAndGCNEnsemble':
-            # 生の特徴量とラベル分布特徴量を分離
-            if USE_PCA:
-                raw_features = run_data.x[:, :PCA_COMPONENTS]
-            else:
-                raw_features = run_data.x[:, :dataset.num_features]
-            
-            if neighbor_label_features is not None and CALC_NEIGHBOR_LABEL_FEATURES:
-                # ラベル分布特徴量 + 生の特徴量を結合
-                label_features = torch.cat([neighbor_label_features, raw_features], dim=1)
-            else:
-                # 生の特徴量のみを使用
-                label_features = raw_features
-            
-            out = model(raw_features, label_features, run_data.edge_index)
-        
-        # GCNAndMLPConcatの場合は、生の特徴量とラベル分布特徴量の次元を指定
-        elif MODEL_NAME == 'GCNAndMLPConcat':
-            # 元の特徴量次元（PCA処理前の生の特徴量）
-            if USE_PCA:
-                raw_feature_dim = PCA_COMPONENTS
-            else:
-                raw_feature_dim = dataset.num_features
-            
-            # ラベル分布特徴量の次元
-            label_dist_dim = neighbor_label_features.shape[1] if neighbor_label_features is not None else 0
-            
-            model_kwargs.update({
-                'xfeat_dim': raw_feature_dim,  # 生の特徴量の次元
-                'xlabel_dim': label_dist_dim,  # ラベル分布特徴量の次元
-                'gcn_hidden_dim': GCN_HIDDEN_DIM,  # GCNの隠れ層次元
-                'mlp_hidden_dim': MLP_HIDDEN_DIM   # MLPの隠れ層次元
-            })
-            
-            print(f"  GCNAndMLPConcatモデル作成:")
-            print(f"    生の特徴量次元: {raw_feature_dim}")
-            print(f"    ラベル分布特徴量次元: {label_dist_dim}")
-            print(f"    総特徴量次元: {actual_feature_dim}")
-            print(f"    GCN隠れ層次元: {GCN_HIDDEN_DIM}")
-            print(f"    MLP隠れ層次元: {MLP_HIDDEN_DIM}")
-        
         # MixHopモデルの場合はべき乗パラメータを指定
-        elif MODEL_NAME in ['MixHop', 'MixHopWithSkip']:
+        if MODEL_NAME in ['MixHop']:
             model_kwargs.update({
                 'powers': MIXHOP_POWERS
             })
@@ -1032,34 +789,6 @@ else:
             # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
             if MODEL_NAME == 'H2GCN':
                 out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-            # GCNAndMLPConcatの場合は特別な処理
-            elif MODEL_NAME == 'GCNAndMLPConcat':
-                # 生の特徴量とラベル分布特徴量を分離
-                if USE_PCA:
-                    raw_features = run_data.x[:, :PCA_COMPONENTS]
-                else:
-                    raw_features = run_data.x[:, :dataset.num_features]
-                
-                if neighbor_label_features is not None:
-                    label_features = neighbor_label_features
-                else:
-                    label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-                
-                out = model(raw_features, label_features, run_data.edge_index)
-            # MLPAndGCNEnsembleの場合は特別な処理
-            elif MODEL_NAME == 'MLPAndGCNEnsemble':
-                # 生の特徴量とラベル分布特徴量を分離
-                if USE_PCA:
-                    raw_features = run_data.x[:, :PCA_COMPONENTS]
-                else:
-                    raw_features = run_data.x[:, :dataset.num_features]
-                
-                if neighbor_label_features is not None:
-                    label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
-                else:
-                    label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-                
-                out = model(raw_features, label_features, run_data.edge_index)
             else:
                 # その他のモデルは標準的な処理
                 out = model(run_data.x, run_data.edge_index)
@@ -1077,34 +806,7 @@ else:
             # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
             if MODEL_NAME == 'H2GCN':
                 out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-            # GCNAndMLPConcatの場合は特別な処理
-            elif MODEL_NAME == 'GCNAndMLPConcat':
-                # 生の特徴量とラベル分布特徴量を分離
-                if USE_PCA:
-                    raw_features = run_data.x[:, :PCA_COMPONENTS]
-                else:
-                    raw_features = run_data.x[:, :dataset.num_features]
-                
-                if neighbor_label_features is not None:
-                    label_features = neighbor_label_features
-                else:
-                    label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-                
-                out = model(raw_features, label_features, run_data.edge_index)
-            # MLPAndGCNEnsembleの場合は特別な処理
-            elif MODEL_NAME == 'MLPAndGCNEnsemble':
-                # 生の特徴量とラベル分布特徴量を分離
-                if USE_PCA:
-                    raw_features = run_data.x[:, :PCA_COMPONENTS]
-                else:
-                    raw_features = run_data.x[:, :dataset.num_features]
-                
-                if neighbor_label_features is not None:
-                    label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
-                else:
-                    label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-                
-                out = model(raw_features, label_features, run_data.edge_index)
+
             else:
                 # その他のモデルは標準的な処理
                 out = model(run_data.x, run_data.edge_index)
@@ -1115,18 +817,6 @@ else:
                 correct = pred[mask] == run_data.y[mask]
                 accs.append(int(correct.sum()) / int(mask.sum()))
             return accs
-        
-        # α値を取得する関数
-        def get_alpha_value():
-            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
-                return torch.clamp(model.alpha, 0, 1).item()
-            return None
-        
-        # β値を取得する関数
-        def get_beta_value():
-            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
-                return torch.clamp(1 - model.alpha, 0, 1).item()
-            return None
         
         # 学習実行
         best_val_acc = 0
@@ -1173,13 +863,6 @@ else:
             # 進捗表示
             if epoch % DISPLAY_PROGRESS_EVERY == 0:
                 alpha_info = ""
-                if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-                    alpha_val = get_alpha_value()
-                    beta_val = get_beta_value()
-                    if alpha_val is not None and beta_val is not None:
-                        alpha_info = f", α={alpha_val:.4f}, 1-α={beta_val:.4f}"
-                    elif alpha_val is not None:
-                        alpha_info = f", α={alpha_val:.4f}"
                 
                 early_stop_info = ""
                 if USE_EARLY_STOPPING:
@@ -1192,23 +875,6 @@ else:
             final_train_acc = train_acc
             final_val_acc = val_acc
             final_test_acc = test_acc
-        
-        # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値を表示
-        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-            final_alpha = get_alpha_value()
-            final_beta = get_beta_value()
-            if final_alpha is not None or final_beta is not None:
-                print(f"\n=== {MODEL_NAME} 最終α・(1-α)値 ===")
-                if hasattr(model, 'print_alpha_info'):
-                    model.print_alpha_info()
-                else:
-                    print(f"α (GCN重み): {final_alpha:.4f}")
-                    print(f"(1-α) (MLP重み): {final_beta:.4f}")
-        
-        # GCNAndMLPConcatモデルの最終隠れ層次元情報を表示
-        elif MODEL_NAME == 'GCNAndMLPConcat':
-            print(f"\n=== GCNAndMLPConcat 最終隠れ層次元情報 ===")
-            model.print_hidden_dims_info()
         
         # 結果を保存
         run_result = {
@@ -1231,38 +897,6 @@ else:
             run_result['early_stopping_patience'] = EARLY_STOPPING_PATIENCE
             run_result['early_stopping_min_delta'] = EARLY_STOPPING_MIN_DELTA
         
-        # MLPAndGCNFusion/MLPAndGCNEnsembleの場合はαとβ値も保存
-        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-            final_alpha = get_alpha_value()
-            final_beta = get_beta_value()
-            if final_alpha is not None:
-                run_result['final_alpha'] = final_alpha
-            if final_beta is not None:
-                run_result['final_1_minus_alpha'] = final_beta
-            
-            # α情報を取得
-            if MODEL_NAME == 'MLPAndGCNFusion' and hasattr(model, 'get_alpha_info'):
-                alpha_info = model.get_alpha_info()
-            elif MODEL_NAME == 'MLPAndGCNEnsemble' and hasattr(model, 'get_alpha_info'):
-                alpha_info = model.get_alpha_info()
-            else:
-                # フォールバック用のα情報
-                alpha_info = {
-                    'alpha': final_alpha,
-                    'beta': final_beta,
-                    'gcn_weight': final_alpha,
-                    'mlp_weight': final_beta,
-                    'gcn_name': 'GCN Features',
-                    'mlp_name': 'MLP Features',
-                    'fusion_method': 'ensemble'
-                }
-            run_result['alpha_info'] = alpha_info
-        
-        # GCNAndMLPConcatの場合は隠れ層次元情報も保存
-        elif MODEL_NAME == 'GCNAndMLPConcat':
-            hidden_dims_info = model.get_hidden_dims_info()
-            run_result['hidden_dims_info'] = hidden_dims_info
-        
         all_results.append(run_result)
         
         print(f"実験 {run + 1} 完了:")
@@ -1273,10 +907,6 @@ else:
     print(f"\n=== 詳細結果 ===")
     for i, result in enumerate(all_results):
         alpha_info = ""
-        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in result:
-            alpha_info = f", α={result['final_alpha']:.4f}"
-            if 'final_1_minus_alpha' in result:
-                alpha_info += f", 1-α={result['final_1_minus_alpha']:.4f}"
         
         noise_info = ""
         if USE_FEATURE_NOISE and 'noise_info' in result and result['noise_info'] is not None:
@@ -1316,22 +946,6 @@ print(f"\nベスト結果:")
 print(f"  Val:   {np.mean(best_val_accs):.4f} ± {np.std(best_val_accs):.4f}")
 print(f"  Test:  {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
 
-# MLPAndGCNFusion/MLPAndGCNEnsembleモデルのαとβ値統計
-if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:
-    final_alphas = [r['final_alpha'] for r in all_results]
-    final_betas = [r['final_1_minus_alpha'] for r in all_results]
-    print(f"\n{MODEL_NAME} α・(1-α)値統計:")
-    print(f"  最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}")
-    print(f"  最終(1-α)値: {np.mean(final_betas):.4f} ± {np.std(final_betas):.4f}")
-    print(f"  α値範囲: [{min(final_alphas):.4f}, {max(final_alphas):.4f}]")
-    print(f"  (1-α)値範囲: [{min(final_betas):.4f}, {max(final_betas):.4f}]")
-    
-    # 特徴量の重み統計
-    gcn_weights = [r['alpha_info']['gcn_weight'] for r in all_results]
-    mlp_weights = [r['alpha_info']['mlp_weight'] for r in all_results]
-    print(f"  GCN重み: {np.mean(gcn_weights):.4f} ± {np.std(gcn_weights):.4f}")
-    print(f"  MLP重み: {np.mean(mlp_weights):.4f} ± {np.std(mlp_weights):.4f}")
-
 # Early stopping統計
 if USE_EARLY_STOPPING:
     early_stopped_count = sum(1 for r in all_results if r.get('early_stopped', False))
@@ -1345,10 +959,6 @@ if USE_EARLY_STOPPING:
 if USE_FEATURE_NOISE:
     print(f"ノイズ設定: タイプ={NOISE_TYPE}, 割合={NOISE_PERCENTAGE:.1%}")
 
-# MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値情報
-if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:
-    print(f"最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}")
-    print(f"最終(1-α)値: {np.mean(final_betas):.4f} ± {np.std(final_betas):.4f}")
 
 print(f"\n=== 実験完了 ===")
 print(f"データセット: {DATASET_NAME}")
