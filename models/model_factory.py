@@ -7,7 +7,7 @@ from .h2gcn import H2GCN
 from .mixhop import MixHop
 from .graphsage import GraphSAGE
 from .gprgnn import GPRGNN
-from .cas import CAS
+from .robust_h2gcn import RobustH2GCN
 
 class ModelFactory:
     """
@@ -97,6 +97,17 @@ class ModelFactory:
                 dropout=default_params['dropout']
             )
         
+        elif model_name == 'RobustH2GCN':
+            # RobustH2GCNは特徴量とラベル特徴量の両方を使用
+            in_label_dim = kwargs.get('in_label_dim', in_channels)
+            return RobustH2GCN(
+                in_feat_dim=in_channels,
+                in_label_dim=in_label_dim,
+                hidden_dim=hidden_channels,
+                out_dim=out_channels,
+                dropout=default_params['dropout']
+            )
+        
         elif model_name == 'MixHop':
             powers = kwargs.get('powers', [0, 1, 2])
             return MixHop(
@@ -134,16 +145,7 @@ class ModelFactory:
                 Init=Init
             )
         
-        elif model_name == 'CAS':
-            # CASモデルの場合、ベースモデルを指定する必要がある
-            base_model_name = kwargs.get('base_model', 'MLP')
-            base_model = ModelFactory.create_model(
-                base_model_name, in_channels, hidden_channels, out_channels, **kwargs
-            )
-            alpha = kwargs.get('alpha', 0.5)
-            max_iter = kwargs.get('max_iter', 50)
-            autoscale = kwargs.get('autoscale', True)
-            return CAS(base_model, alpha=alpha, max_iter=max_iter, autoscale=autoscale)
+
         
         else:
             raise ValueError(f"Unsupported model: {model_name}")
@@ -185,6 +187,11 @@ class ModelFactory:
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
             },
+            'RobustH2GCN': {
+                'description': 'Robust H2GCN Model (uses feature and label features with gating mechanism)',
+                'parameters': ['in_channels', 'in_label_dim', 'hidden_channels', 'out_channels', 'dropout'],
+                'default_hidden_channels': 16
+            },
             'MixHop': {
                 'description': 'MixHop Model (mixes different powers of adjacency matrix)',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'powers'],
@@ -200,11 +207,7 @@ class ModelFactory:
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'alpha', 'K', 'Init'],
                 'default_hidden_channels': 16
             },
-            'CAS': {
-                'description': 'Correct and Smooth (CAS) Model - post-processing for improving base model predictions',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'base_model', 'alpha', 'max_iter', 'autoscale'],
-                'default_hidden_channels': 16
-            },
+
         }
         
         return model_info.get(model_name, {})
@@ -217,4 +220,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GAT', 'MLP', 'LINKX', 'H2GCN', 'MixHop', 'GraphSAGE', 'GPRGNN', 'CAS'] 
+        return ['GCN', 'GAT', 'MLP', 'LINKX', 'H2GCN', 'MixHop', 'GraphSAGE', 'GPRGNN'] 
