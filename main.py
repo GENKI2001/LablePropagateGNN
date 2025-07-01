@@ -4,7 +4,7 @@ import numpy as np
 from utils.dataset_loader import load_dataset, get_supported_datasets
 from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info, create_similarity_based_edges, create_similarity_based_edges_with_original
 from utils.adjacency_creator import create_normalized_adjacency_matrices, get_adjacency_matrix, apply_adjacency_to_features, combine_hop_features, print_adjacency_info, make_undirected
-from utils.feature_noise import add_feature_noise, add_feature_noise_uniform, add_feature_noise_random, print_noise_info
+from utils.feature_noise import add_feature_noise, add_feature_noise_uniform, add_feature_noise_random, add_feature_missingness, apply_feature_modifications, print_noise_info, print_modification_info
 from models import ModelFactory
 
 # ============================================================================
@@ -17,7 +17,7 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Texas'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Chameleon'  # ここを変更してデータセットを切り替え
 
 # モデル選択（MLPまたはGCN）
 # サポートされているモデル:
@@ -25,15 +25,16 @@ DATASET_NAME = 'Texas'  # ここを変更してデータセットを切り替え
 # - 'GCN': Graph Convolutional Network (グラフ構造を活用)
 # - 'GAT': Graph Attention Network (アテンション機構を使用したグラフ畳み込み)
 # - 'H2GCN': H2GCN Model (1-hopと2-hopの隣接行列を使用してグラフ構造を学習)
+# - 'RobustH2GCN': Robust H2GCN Model (特徴量とラベル特徴量をゲート機構で融合)
 # - 'MixHop': MixHop Model (異なるべき乗の隣接行列を混合してグラフ畳み込み)
 # - 'GraphSAGE': GraphSAGE Model (帰納的学習による大規模グラフ対応)
 # - 'GPRGNN': GPR-GNN Model (Generalized PageRank Graph Neural Network)
-# - 'CAS': Correct and Smooth Model (ベースモデルの予測を後処理で改善)
-MODEL_NAME = 'CAS'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'GAT', 'H2GCN', 'MixHop', 'GraphSAGE', 'GPRGNN', 'CAS')
+
+MODEL_NAME = 'RobustH2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'GAT', 'H2GCN', 'RobustH2GCN', 'MixHop', 'GraphSAGE', 'GPRGNN')
 
 # 実験設定
-NUM_RUNS = 3  # 実験回数（テスト用に減らす）
-NUM_EPOCHS = 100  # エポック数（テスト用に減らす）
+NUM_RUNS = 10  # 実験回数（テスト用に減らす）
+NUM_EPOCHS = 600  # エポック数（テスト用に減らす）
 
 # データ分割設定
 TRAIN_RATIO = 0.6  # 訓練データの割合
@@ -41,21 +42,29 @@ VAL_RATIO = 0.2    # 検証データの割合
 TEST_RATIO = 0.2   # テストデータの割合
 
 # 特徴量作成設定
-MAX_HOPS = 4       # 最大hop数（1, 2, 3, ...）
-CALC_NEIGHBOR_LABEL_FEATURES = False  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
+MAX_HOPS = 3       # 最大hop数（1, 2, 3, ...）
+CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
 COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
-TEMPERATURE = 1.5  # 温度パラメータ
+TEMPERATURE = 0.5  # 温度パラメータ homophily高い時は 0.5 で、heteroは 2.5
 DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
 
 # Grid Search設定
-USE_GRID_SEARCH = False  # True: Grid searchを実行, False: 単一パラメータで実行
-GRID_SEARCH_PARAM = 'MAX_HOPS'  # Grid search対象パラメータ
-GRID_SEARCH_VALUES = [1, 2, 3, 4, 5, 6]  # Grid searchで試す値
+USE_GRID_SEARCH = True  # True: Grid searchを実行, False: 単一パラメータで実行
+GRID_SEARCH_PARAM = 'HIDDEN_CHANNELS'  # Grid search対象パラメータ ('MAX_HOPS', 'HIDDEN_CHANNELS')
+GRID_SEARCH_VALUES = [16]  # Grid searchで試す値
 
-# 特徴量ノイズ追加設定
-USE_FEATURE_NOISE = False  # True: 特徴量にノイズを追加, False: スキップ
-NOISE_PERCENTAGE = 0.1  # ノイズを追加する特徴量の割合 (0.0-1.0) 
-NOISE_TYPE = 'per_node'  # 'uniform': 全ノードで同じ特徴量にノイズ, 'random': 各ノードで独立にノイズ, 'per_node': 各ノードでランダムに特徴量選択
+# 特徴量改変設定（統合版）
+USE_FEATURE_MODIFICATION = False  # True: 特徴量を改変, False: スキップ
+
+# 改変タイプの説明:
+# - 'noise': 特徴量の値を0と1で入れ替える（バイナリ特徴量用）
+#   - method: 'uniform'（全ノードで同じ特徴量）, 'random'（各要素独立）, 'per_node'（各ノードでランダム選択）
+# - 'missingness': 特徴量を0にマスキング（欠損値として扱う）
+#   - percentage: 改変する要素の割合 (0.0-1.0)
+FEATURE_MODIFICATIONS = [
+    # {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'},  # ノイズ追加（0と1を入れ替え）
+    # {'type': 'missingness', 'percentage': 0.3},  # 欠損追加（0にマスキング）
+]
 
 # 類似度ベースエッジ作成設定
 USE_SIMILARITY_BASED_EDGES = False  # True: 類似度ベースエッジ作成を実行, False: スキップ
@@ -65,9 +74,9 @@ SIMILARITY_RAW_THRESHOLD = 0.165  # 生の特徴量の類似度閾値 (0.0-1.0)
 SIMILARITY_LABEL_THRESHOLD = 0.9999997  # ラベル分布特徴量の類似度閾値 (0.0-1.0)
 
 # モデルハイパーパラメータ
-HIDDEN_CHANNELS = 12  # 隠れ層の次元
-NUM_LAYERS = 1        # レイヤー数
-DROPOUT = 0.5         # ドロップアウト率
+HIDDEN_CHANNELS = 32  # 隠れ層の次元
+NUM_LAYERS = 1       # レイヤー数
+DROPOUT = 0.5        # ドロップアウト率
 
 # MixHopモデル固有の設定
 MIXHOP_POWERS = [0, 1, 2]  # 隣接行列のべき乗のリスト [0, 1, 2] または [0, 1, 2, 3] など
@@ -84,11 +93,7 @@ GPRGNN_ALPHA = 0.1  # 初期のPageRank係数
 GPRGNN_K = 10       # 伝播ステップ数（= GPRConv の hop 数）
 GPRGNN_INIT = 'PPR' # 重みの初期化方法（'PPR', 'SGC', 'NPPR', 'Random', 'WS' など）
 
-# CASモデル固有の設定
-CAS_BASE_MODEL = 'MLP'  # ベースモデル ('MLP', 'GCN', 'GAT', etc.)
-CAS_ALPHA = 0.5         # 伝播係数 (0.0-1.0)
-CAS_MAX_ITER = 50       # 最大反復回数
-CAS_AUTOSCALE = True    # 自動スケーリングを使用するかどうか
+
 
 # PCA設定
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
@@ -137,43 +142,26 @@ else:
     print(f"\n=== PCA処理をスキップ ===")
     print(f"生の特徴量を使用します: {data.x.shape}")
 
-# 実験前に特徴量にノイズを追加
-if USE_FEATURE_NOISE and data.x.shape[1] > 0:
-    print(f"\n=== 実験前特徴量ノイズ追加 ===")
-    print(f"ノイズタイプ: {NOISE_TYPE}")
-    print(f"ノイズ割合: {NOISE_PERCENTAGE:.1%}")
+# 実験前に特徴量改変を適用
+if USE_FEATURE_MODIFICATION and data.x.shape[1] > 0:
+    print(f"\n=== 実験前特徴量改変適用 ===")
+    print(f"改変設定数: {len(FEATURE_MODIFICATIONS)}")
     
-    if NOISE_TYPE == 'uniform':
-        # 全ノードで同じ特徴量インデックスにノイズを追加
-        data.x, noise_info = add_feature_noise_uniform(data.x, NOISE_PERCENTAGE, device)
-    elif NOISE_TYPE == 'random':
-        # 各ノード・各特徴量で独立にノイズを追加
-        data.x, noise_info = add_feature_noise_random(data.x, NOISE_PERCENTAGE, device)
-    elif NOISE_TYPE == 'per_node':
-        # 各ノードでランダムに特徴量を選択してノイズを追加
-        data.x, noise_info = add_feature_noise(data.x, NOISE_PERCENTAGE, device)
-    else:
-        print(f"警告: 未知のノイズタイプ '{NOISE_TYPE}' のため、ノイズ追加をスキップします")
-        noise_info = {'noise_percentage': 0.0, 'num_features': data.x.shape[1]}
+    data.x, modification_info = apply_feature_modifications(data.x, FEATURE_MODIFICATIONS, device)
     
-    # ノイズ情報を表示
-    print_noise_info(noise_info, DATASET_NAME)
-    print(f"ノイズ追加後の特徴量形状: {data.x.shape}")
-elif USE_FEATURE_NOISE and data.x.shape[1] == 0:
-    print(f"\n=== 実験前特徴量ノイズ追加 ===")
-    print(f"警告: 特徴量が空のため、ノイズ追加をスキップします")
-    noise_info = {'noise_percentage': 0.0, 'num_features': 0, 'noise_type': 'none'}
+    # 改変情報を表示
+    print_modification_info(modification_info, DATASET_NAME)
+    print(f"改変適用後の特徴量形状: {data.x.shape}")
+elif USE_FEATURE_MODIFICATION and data.x.shape[1] == 0:
+    print(f"\n=== 実験前特徴量改変適用 ===")
+    print(f"警告: 特徴量が空のため、改変適用をスキップします")
+    modification_info = {
+        'original_shape': (0, 0),
+        'final_shape': (0, 0),
+        'modifications_applied': [],
+        'total_modifications': len(FEATURE_MODIFICATIONS)
+    }
 
-# 隣接行列を作成
-adjacency_matrices = create_normalized_adjacency_matrices(data, device, max_hops=2)
-
-# 特定のhopの隣接行列を取得
-adj_1hop = get_adjacency_matrix(adjacency_matrices, 1)
-adj_2hop = get_adjacency_matrix(adjacency_matrices, 2)
-
-# 隣接行列をデータオブジェクトに追加
-data.adj_1hop = adj_1hop
-data.adj_2hop = adj_2hop
 # 隣接行列を作成
 adjacency_matrices = create_normalized_adjacency_matrices(data, device, max_hops=2)
 
@@ -234,11 +222,25 @@ if USE_GRID_SEARCH:
     print(f"Grid Search対象パラメータ: {GRID_SEARCH_PARAM}")
     print(f"Grid Search値: {GRID_SEARCH_VALUES}")
 else:
-    print(f"単一パラメータ実行: {GRID_SEARCH_PARAM} = {MAX_HOPS}")
-print(f"特徴量ノイズ追加使用: {USE_FEATURE_NOISE}")
-if USE_FEATURE_NOISE:
-    print(f"ノイズ割合: {NOISE_PERCENTAGE:.1%}")
-    print(f"ノイズタイプ: {NOISE_TYPE}")
+    if GRID_SEARCH_PARAM == 'MAX_HOPS':
+        print(f"単一パラメータ実行: {GRID_SEARCH_PARAM} = {MAX_HOPS}")
+    elif GRID_SEARCH_PARAM == 'HIDDEN_CHANNELS':
+        print(f"単一パラメータ実行: {GRID_SEARCH_PARAM} = {HIDDEN_CHANNELS}")
+    else:
+        print(f"単一パラメータ実行: {GRID_SEARCH_PARAM} = {MAX_HOPS}")
+print(f"特徴量改変使用: {USE_FEATURE_MODIFICATION}")
+if USE_FEATURE_MODIFICATION:
+    print(f"改変設定数: {len(FEATURE_MODIFICATIONS)}")
+    for i, mod in enumerate(FEATURE_MODIFICATIONS):
+        mod_type = mod.get('type', 'unknown')
+        percentage = mod.get('percentage', 0.0)
+        if mod_type == 'noise':
+            method = mod.get('method', 'per_node')
+            print(f"  改変 {i+1}: ノイズ ({method}) - 割合: {percentage:.1%}")
+        elif mod_type == 'missingness':
+            print(f"  改変 {i+1}: 欠損 - 割合: {percentage:.1%}")
+        else:
+            print(f"  改変 {i+1}: {mod_type} - 割合: {percentage:.1%}")
 print(f"類似度ベースエッジ作成使用: {USE_SIMILARITY_BASED_EDGES}")
 if USE_SIMILARITY_BASED_EDGES:
     print(f"エッジモード: {SIMILARITY_EDGE_MODE}")
@@ -247,7 +249,7 @@ if USE_SIMILARITY_BASED_EDGES:
         print(f"生の特徴量類似度閾値: {SIMILARITY_RAW_THRESHOLD}")
     elif SIMILARITY_FEATURE_TYPE == 'label':
         print(f"ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
-print(f"隠れ層次元: {default_hidden_channels}")
+print(f"隠れ層次元: {HIDDEN_CHANNELS if not USE_GRID_SEARCH else f'Grid Search ({GRID_SEARCH_VALUES})'}")
 print(f"レイヤー数: {NUM_LAYERS}")
 print(f"ドロップアウト: {DROPOUT}")
 if MODEL_NAME == 'H2GCN':
@@ -269,15 +271,7 @@ elif MODEL_NAME == 'GPRGNN':
     print(f"PageRank係数: {GPRGNN_ALPHA}")
     print(f"伝播ステップ数: {GPRGNN_K}")
     print(f"重み初期化方法: {GPRGNN_INIT}")
-elif MODEL_NAME == 'CAS':
-    print(f"CASモデル作成: Correct and Smooth Model")
-    print(f"ベースモデル: {CAS_BASE_MODEL}")
-    print(f"伝播係数: {CAS_ALPHA}")
-    print(f"最大反復回数: {CAS_MAX_ITER}")
-    print(f"自動スケーリング: {CAS_AUTOSCALE}")
-    print(f"説明: ベースモデルの予測結果を後処理で改善する手法")
-    print(f"  - Correct: 訓練データの誤差をグラフ構造で伝播")
-    print(f"  - Smooth: 修正された予測をグラフ構造で平滑化")
+
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
 print(f"Early Stopping使用: {USE_EARLY_STOPPING}")
@@ -305,8 +299,13 @@ if USE_GRID_SEARCH:
         # パラメータ値を設定
         if GRID_SEARCH_PARAM == 'MAX_HOPS':
             current_max_hops = param_value
+            current_hidden_channels = HIDDEN_CHANNELS
+        elif GRID_SEARCH_PARAM == 'HIDDEN_CHANNELS':
+            current_hidden_channels = param_value
+            current_max_hops = MAX_HOPS
         else:
             current_max_hops = MAX_HOPS
+            current_hidden_channels = HIDDEN_CHANNELS
         
         # このパラメータ値での実験結果を保存するリスト
         param_results = []
@@ -424,7 +423,7 @@ if USE_GRID_SEARCH:
             model_kwargs = {
                 'model_name': MODEL_NAME,
                 'in_channels': actual_feature_dim,  # 実際の特徴量次元を使用
-                'hidden_channels': default_hidden_channels,
+                'hidden_channels': current_hidden_channels,
                 'out_channels': dataset.num_classes,
                 'num_layers': NUM_LAYERS,
                 'dropout': DROPOUT
@@ -438,7 +437,7 @@ if USE_GRID_SEARCH:
                 
                 print(f"  {MODEL_NAME}モデル作成:")
                 print(f"    べき乗リスト: {MIXHOP_POWERS}")
-                print(f"    隠れ層次元: {default_hidden_channels}")
+                print(f"    隠れ層次元: {current_hidden_channels}")
                 print(f"    レイヤー数: {NUM_LAYERS}")
                 print(f"    ドロップアウト: {DROPOUT}")
             
@@ -450,7 +449,7 @@ if USE_GRID_SEARCH:
                 
                 print(f"  GraphSAGEモデル作成:")
                 print(f"    集約関数: {GRAPHSAGE_AGGR}")
-                print(f"    隠れ層次元: {default_hidden_channels}")
+                print(f"    隠れ層次元: {current_hidden_channels}")
                 print(f"    レイヤー数: {NUM_LAYERS}")
                 print(f"    ドロップアウト: {DROPOUT}")
             
@@ -464,7 +463,7 @@ if USE_GRID_SEARCH:
                 print(f"  GATモデル作成:")
                 print(f"    アテンションヘッド数: {GAT_NUM_HEADS}")
                 print(f"    ヘッド出力結合: {GAT_CONCAT}")
-                print(f"    隠れ層次元: {default_hidden_channels}")
+                print(f"    隠れ層次元: {current_hidden_channels}")
                 print(f"    レイヤー数: {NUM_LAYERS}")
                 print(f"    ドロップアウト: {DROPOUT}")
             
@@ -481,20 +480,26 @@ if USE_GRID_SEARCH:
                 print(f"    伝播ステップ数: {GPRGNN_K}")
                 print(f"    重み初期化方法: {GPRGNN_INIT}")
             
-            # CASモデルの場合はパラメータを指定
-            elif MODEL_NAME == 'CAS':
+
+            
+            # RobustH2GCNモデルの場合はパラメータを指定
+            elif MODEL_NAME == 'RobustH2GCN':
+                # ラベル特徴量の次元を取得
+                if neighbor_label_features is not None:
+                    label_feature_dim = neighbor_label_features.shape[1]
+                else:
+                    # ラベル特徴量がない場合は、クラス数のone-hotベクトルを使用
+                    label_feature_dim = dataset.num_classes
+                
                 model_kwargs.update({
-                    'base_model': CAS_BASE_MODEL,
-                    'alpha': CAS_ALPHA,
-                    'max_iter': CAS_MAX_ITER,
-                    'autoscale': CAS_AUTOSCALE
+                    'in_label_dim': label_feature_dim
                 })
                 
-                print(f"  CASモデル作成:")
-                print(f"    ベースモデル: {CAS_BASE_MODEL}")
-                print(f"    伝播係数: {CAS_ALPHA}")
-                print(f"    最大反復回数: {CAS_MAX_ITER}")
-                print(f"    自動スケーリング: {CAS_AUTOSCALE}")
+                print(f"  RobustH2GCNモデル作成:")
+                print(f"    特徴量次元: {actual_feature_dim}")
+                print(f"    ラベル特徴量次元: {label_feature_dim}")
+                print(f"    隠れ層次元: {current_hidden_channels}")
+                print(f"    ドロップアウト: {DROPOUT}")
             
             model = ModelFactory.create_model(**model_kwargs).to(device)
             
@@ -505,9 +510,18 @@ if USE_GRID_SEARCH:
                 model.train()
                 optimizer.zero_grad()
                 
-                # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+                # H2GCNとRobustH2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
                 if MODEL_NAME == 'H2GCN':
                     out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                elif MODEL_NAME == 'RobustH2GCN':
+                    # RobustH2GCNは特徴量とラベル特徴量の両方を使用
+                    if neighbor_label_features is not None:
+                        out, gate = model(run_data.x, neighbor_label_features, run_data.adj_1hop, run_data.adj_2hop)
+                    else:
+                        # ラベル特徴量がない場合は、one-hotラベルを使用
+                        print(f"  ラベル特徴量がないため、one-hotラベルを使用")
+                        one_hot_labels_tensor = one_hot_labels.to(device)
+                        out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
                 else:
                     # その他のモデルは標準的な処理
                     out = model(run_data.x, run_data.edge_index)
@@ -522,40 +536,35 @@ if USE_GRID_SEARCH:
             def test():
                 model.eval()
                 
-                # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+                # H2GCNとRobustH2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
                 if MODEL_NAME == 'H2GCN':
                     out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                    gate = None
+                elif MODEL_NAME == 'RobustH2GCN':
+                    # RobustH2GCNは特徴量とラベル特徴量の両方を使用
+                    if neighbor_label_features is not None:
+                        out, gate = model(run_data.x, neighbor_label_features, run_data.adj_1hop, run_data.adj_2hop)
+                    else:
+                        # ラベル特徴量がない場合は、one-hotラベルを使用
+                        one_hot_labels_tensor = one_hot_labels.to(device)
+                        out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
                 else:
                     # その他のモデルは標準的な処理
                     out = model(run_data.x, run_data.edge_index)
+                    gate = None
                 
                 pred = out.argmax(dim=1)
                 accs = []
                 for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
                     correct = pred[mask] == run_data.y[mask]
                     accs.append(int(correct.sum()) / int(mask.sum()))
-                return accs
-            
-            # CASモデル用の特別な評価関数
-            @torch.no_grad()
-            def test_with_cas():
-                model.eval()
                 
-                # ベースモデルの予測を取得
-                if MODEL_NAME == 'H2GCN':
-                    base_pred = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                if MODEL_NAME == 'RobustH2GCN':
+                    return accs[0], accs[1], accs[2], gate
                 else:
-                    base_pred = model(run_data.x, run_data.edge_index)
-                
-                # CAS後処理を実行
-                cas_pred = model.correct_and_smooth(run_data, base_pred)
-                
-                pred = cas_pred.argmax(dim=1)
-                accs = []
-                for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
-                    correct = pred[mask] == run_data.y[mask]
-                    accs.append(int(correct.sum()) / int(mask.sum()))
-                return accs
+                    return accs
+            
+
             
             # 学習実行
             best_val_acc = 0
@@ -563,6 +572,7 @@ if USE_GRID_SEARCH:
             final_train_acc = 0
             final_val_acc = 0
             final_test_acc = 0
+            final_gate = None  # RobustH2GCNのgate値を保存
             
             # Early stopping用の変数
             if USE_EARLY_STOPPING:
@@ -573,9 +583,9 @@ if USE_GRID_SEARCH:
             for epoch in range(NUM_EPOCHS + 1):
                 loss = train()
                 
-                # CASモデルの場合は特別な評価関数を使用
-                if MODEL_NAME == 'CAS':
-                    train_acc, val_acc, test_acc = test_with_cas()
+                # RobustH2GCNの場合はgate値も取得
+                if MODEL_NAME == 'RobustH2GCN':
+                    train_acc, val_acc, test_acc, gate = test()
                 else:
                     train_acc, val_acc, test_acc = test()
                 
@@ -603,6 +613,8 @@ if USE_GRID_SEARCH:
                     final_train_acc = train_acc
                     final_val_acc = val_acc
                     final_test_acc = test_acc
+                    if MODEL_NAME == 'RobustH2GCN':
+                        final_gate = gate
                 
                 # 進捗表示
                 if epoch % DISPLAY_PROGRESS_EVERY == 0:
@@ -619,6 +631,8 @@ if USE_GRID_SEARCH:
                 final_train_acc = train_acc
                 final_val_acc = val_acc
                 final_test_acc = test_acc
+                if MODEL_NAME == 'RobustH2GCN':
+                    final_gate = gate
             
             # 結果を保存
             run_result = {
@@ -630,9 +644,13 @@ if USE_GRID_SEARCH:
                 'best_test_acc': best_test_acc
             }
             
-            # ノイズ情報を保存（実験前のノイズ情報を使用）
-            if USE_FEATURE_NOISE:
-                run_result['noise_info'] = noise_info
+            # RobustH2GCNのgate値を保存
+            if MODEL_NAME == 'RobustH2GCN' and final_gate is not None:
+                run_result['final_gate'] = final_gate
+            
+            # 改変情報を保存（実験前の改変情報を使用）
+            if USE_FEATURE_MODIFICATION:
+                run_result['modification_info'] = modification_info
             
             # Early stopping情報を保存
             if USE_EARLY_STOPPING:
@@ -646,6 +664,14 @@ if USE_GRID_SEARCH:
             print(f"実験 {run + 1} 完了:")
             print(f"  最終結果 - Train: {final_train_acc:.4f}, Val: {final_val_acc:.4f}, Test: {final_test_acc:.4f}")
             print(f"  ベスト結果 - Val: {best_val_acc:.4f}, Test: {best_test_acc:.4f}")
+            
+            # RobustH2GCNのgate値を出力
+            if MODEL_NAME == 'RobustH2GCN' and final_gate is not None:
+                gate_mean = final_gate.mean().item()
+                gate_std = final_gate.std().item()
+                gate_min = final_gate.min().item()
+                gate_max = final_gate.max().item()
+                print(f"  Gate統計 - 平均: {gate_mean:.4f}, 標準偏差: {gate_std:.4f}, 範囲: [{gate_min:.4f}, {gate_max:.4f}]")
         
         grid_search_results[param_value] = param_results
     
@@ -691,6 +717,9 @@ if USE_GRID_SEARCH:
     best_param_by_val = max(param_summary.items(), key=lambda x: x[1]['best_val_mean'])
     best_param_by_test = max(param_summary.items(), key=lambda x: x[1]['best_test_mean'])
     
+    # 最終結果Test精度の平均値で最適パラメータを特定
+    best_param_by_final_test = max(param_summary.items(), key=lambda x: x[1]['final_test_mean'])
+    
     print(f"\n{'='*60}")
     print(f"最適パラメータ選択結果:")
     print(f"{'='*60}")
@@ -700,10 +729,16 @@ if USE_GRID_SEARCH:
     print(f"テスト精度ベスト値による最適{GRID_SEARCH_PARAM}: {best_param_by_test[0]}")
     print(f"  検証精度: {best_param_by_test[1]['best_val_mean']:.4f} ± {best_param_by_test[1]['best_val_std']:.4f}")
     print(f"  テスト精度: {best_param_by_test[1]['best_test_mean']:.4f} ± {best_param_by_test[1]['best_test_std']:.4f}")
+    print(f"最終結果Test精度平均値による最適{GRID_SEARCH_PARAM}: {best_param_by_final_test[0]}")
+    print(f"  最終結果Test精度: {best_param_by_final_test[1]['final_test_mean']:.4f} ± {best_param_by_final_test[1]['final_test_std']:.4f}")
     
     # 推奨パラメータ（検証精度ベスト値による選択）
     recommended_param = best_param_by_val[0]
     print(f"\n推奨{GRID_SEARCH_PARAM}: {recommended_param} (検証精度ベスト値による選択)")
+    
+    # 最終結果Test精度の最大値を出力
+    max_final_test_mean = best_param_by_final_test[1]['final_test_mean']
+    print(f"\n最終結果Test精度の最大平均値: {max_final_test_mean:.4f} ({GRID_SEARCH_PARAM}={best_param_by_final_test[0]})")
     
     # 全結果をall_resultsに統合
     all_results = []
@@ -718,9 +753,10 @@ if USE_GRID_SEARCH:
     for i, result in enumerate(all_results):
         alpha_info = ""
         
-        noise_info = ""
-        if USE_FEATURE_NOISE and 'noise_info' in result and result['noise_info'] is not None:
-            noise_info = f", ノイズ={result['noise_info'].get('noise_percentage', 0):.1%}"
+        modification_info = ""
+        if USE_FEATURE_MODIFICATION and 'modification_info' in result and result['modification_info'] is not None:
+            mod_count = len(result['modification_info'].get('modifications_applied', []))
+            modification_info = f", 改変={mod_count}個"
         
         early_stop_info = ""
         if USE_EARLY_STOPPING and result.get('early_stopped', False):
@@ -730,7 +766,7 @@ if USE_GRID_SEARCH:
         if 'grid_search_param' in result:
             grid_search_info = f", {result['grid_search_param_name']}={result['grid_search_param']}"
         
-        print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{noise_info}{early_stop_info}{grid_search_info}")
+        print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{modification_info}{early_stop_info}{grid_search_info}")
     
     # 結果の集計と表示
     print(f"\n=== 実験結果統計 ({NUM_RUNS}回の平均) ===")
@@ -738,7 +774,12 @@ if USE_GRID_SEARCH:
 # 単一パラメータ実行（Grid Searchを使用しない場合）
 else:
     print(f"\n=== 単一パラメータ実行 ===")
-    print(f"{GRID_SEARCH_PARAM} = {MAX_HOPS}")
+    if GRID_SEARCH_PARAM == 'MAX_HOPS':
+        print(f"{GRID_SEARCH_PARAM} = {MAX_HOPS}")
+    elif GRID_SEARCH_PARAM == 'HIDDEN_CHANNELS':
+        print(f"{GRID_SEARCH_PARAM} = {HIDDEN_CHANNELS}")
+    else:
+        print(f"{GRID_SEARCH_PARAM} = {MAX_HOPS}")
     
     # 実験実行
     for run in range(NUM_RUNS):
@@ -803,7 +844,7 @@ else:
                 run_data.edge_index = unique_edges.t()
                 final_edge_count = run_data.edge_index.shape[1]
                 print(f"    元のエッジに類似度ベースエッジを追加: {original_edge_count} + {data.raw_num_similarity_edges} → {final_edge_count}")
-            
+                
             print(f"  エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
 
         # ラベル分布特徴量類似度ベースエッジを必要に応じて結合
@@ -831,7 +872,7 @@ else:
                 )
                 run_data.edge_index = combined_edge_index
                 print(f"    元のエッジにラベル分布特徴量ベースエッジを追加: {num_orig} + {num_new} → {num_total}")
-            
+                
             print(f"  ラベル分布特徴量エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
         
         elif USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is None:
@@ -853,7 +894,7 @@ else:
         model_kwargs = {
             'model_name': MODEL_NAME,
             'in_channels': actual_feature_dim,  # 実際の特徴量次元を使用
-            'hidden_channels': default_hidden_channels,
+            'hidden_channels': HIDDEN_CHANNELS,
             'out_channels': dataset.num_classes,
             'num_layers': NUM_LAYERS,
             'dropout': DROPOUT
@@ -866,7 +907,7 @@ else:
             
             print(f"  {MODEL_NAME}モデル作成:")
             print(f"    べき乗リスト: {MIXHOP_POWERS}")
-            print(f"    隠れ層次元: {default_hidden_channels}")
+            print(f"    隠れ層次元: {HIDDEN_CHANNELS}")
             print(f"    レイヤー数: {NUM_LAYERS}")
             print(f"    ドロップアウト: {DROPOUT}")
         
@@ -878,7 +919,7 @@ else:
             
             print(f"  GraphSAGEモデル作成:")
             print(f"    集約関数: {GRAPHSAGE_AGGR}")
-            print(f"    隠れ層次元: {default_hidden_channels}")
+            print(f"    隠れ層次元: {HIDDEN_CHANNELS}")
             print(f"    レイヤー数: {NUM_LAYERS}")
             print(f"    ドロップアウト: {DROPOUT}")
         
@@ -892,7 +933,7 @@ else:
             print(f"  GATモデル作成:")
             print(f"    アテンションヘッド数: {GAT_NUM_HEADS}")
             print(f"    ヘッド出力結合: {GAT_CONCAT}")
-            print(f"    隠れ層次元: {default_hidden_channels}")
+            print(f"    隠れ層次元: {HIDDEN_CHANNELS}")
             print(f"    レイヤー数: {NUM_LAYERS}")
             print(f"    ドロップアウト: {DROPOUT}")
         
@@ -909,20 +950,26 @@ else:
             print(f"    伝播ステップ数: {GPRGNN_K}")
             print(f"    重み初期化方法: {GPRGNN_INIT}")
         
-        # CASモデルの場合はパラメータを指定
-        elif MODEL_NAME == 'CAS':
+
+        
+        # RobustH2GCNモデルの場合はパラメータを指定
+        elif MODEL_NAME == 'RobustH2GCN':
+            # ラベル特徴量の次元を取得
+            if neighbor_label_features is not None:
+                label_feature_dim = neighbor_label_features.shape[1]
+            else:
+                # ラベル特徴量がない場合は、クラス数のone-hotベクトルを使用
+                label_feature_dim = dataset.num_classes
+            
             model_kwargs.update({
-                'base_model': CAS_BASE_MODEL,
-                'alpha': CAS_ALPHA,
-                'max_iter': CAS_MAX_ITER,
-                'autoscale': CAS_AUTOSCALE
+                'in_label_dim': label_feature_dim
             })
             
-            print(f"  CASモデル作成:")
-            print(f"    ベースモデル: {CAS_BASE_MODEL}")
-            print(f"    伝播係数: {CAS_ALPHA}")
-            print(f"    最大反復回数: {CAS_MAX_ITER}")
-            print(f"    自動スケーリング: {CAS_AUTOSCALE}")
+            print(f"  RobustH2GCNモデル作成:")
+            print(f"    特徴量次元: {actual_feature_dim}")
+            print(f"    ラベル特徴量次元: {label_feature_dim}")
+            print(f"    隠れ層次元: {HIDDEN_CHANNELS}")
+            print(f"    ドロップアウト: {DROPOUT}")
         
         model = ModelFactory.create_model(**model_kwargs).to(device)
         
@@ -933,9 +980,17 @@ else:
             model.train()
             optimizer.zero_grad()
             
-            # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+            # H2GCNとRobustH2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
             if MODEL_NAME == 'H2GCN':
                 out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+            elif MODEL_NAME == 'RobustH2GCN':
+                # RobustH2GCNは特徴量とラベル特徴量の両方を使用
+                if neighbor_label_features is not None:
+                    out, gate = model(run_data.x, neighbor_label_features, run_data.adj_1hop, run_data.adj_2hop)
+                else:
+                    # ラベル特徴量がない場合は、one-hotラベルを使用
+                    one_hot_labels_tensor = one_hot_labels.to(device)
+                    out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
             else:
                 # その他のモデルは標準的な処理
                 out = model(run_data.x, run_data.edge_index)
@@ -950,40 +1005,35 @@ else:
         def test():
             model.eval()
             
-            # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+            # H2GCNとRobustH2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
             if MODEL_NAME == 'H2GCN':
                 out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                gate = None
+            elif MODEL_NAME == 'RobustH2GCN':
+                # RobustH2GCNは特徴量とラベル特徴量の両方を使用
+                if neighbor_label_features is not None:
+                    out, gate = model(run_data.x, neighbor_label_features, run_data.adj_1hop, run_data.adj_2hop)
+                else:
+                    # ラベル特徴量がない場合は、one-hotラベルを使用
+                    one_hot_labels_tensor = one_hot_labels.to(device)
+                    out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
             else:
                 # その他のモデルは標準的な処理
                 out = model(run_data.x, run_data.edge_index)
+                gate = None
             
             pred = out.argmax(dim=1)
             accs = []
             for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
                 correct = pred[mask] == run_data.y[mask]
                 accs.append(int(correct.sum()) / int(mask.sum()))
-            return accs
-        
-        # CASモデル用の特別な評価関数
-        @torch.no_grad()
-        def test_with_cas():
-            model.eval()
             
-            # ベースモデルの予測を取得
-            if MODEL_NAME == 'H2GCN':
-                base_pred = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+            if MODEL_NAME == 'RobustH2GCN':
+                return accs[0], accs[1], accs[2], gate
             else:
-                base_pred = model(run_data.x, run_data.edge_index)
-            
-            # CAS後処理を実行
-            cas_pred = model.correct_and_smooth(run_data, base_pred)
-            
-            pred = cas_pred.argmax(dim=1)
-            accs = []
-            for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
-                correct = pred[mask] == run_data.y[mask]
-                accs.append(int(correct.sum()) / int(mask.sum()))
-            return accs
+                return accs
+        
+
         
         # 学習実行
         best_val_acc = 0
@@ -991,6 +1041,7 @@ else:
         final_train_acc = 0
         final_val_acc = 0
         final_test_acc = 0
+        final_gate = None  # RobustH2GCNのgate値を保存
         
         # Early stopping用の変数
         if USE_EARLY_STOPPING:
@@ -1001,9 +1052,9 @@ else:
         for epoch in range(NUM_EPOCHS + 1):
             loss = train()
             
-            # CASモデルの場合は特別な評価関数を使用
-            if MODEL_NAME == 'CAS':
-                train_acc, val_acc, test_acc = test_with_cas()
+            # RobustH2GCNの場合はgate値も取得
+            if MODEL_NAME == 'RobustH2GCN':
+                train_acc, val_acc, test_acc, gate = test()
             else:
                 train_acc, val_acc, test_acc = test()
             
@@ -1031,6 +1082,8 @@ else:
                 final_train_acc = train_acc
                 final_val_acc = val_acc
                 final_test_acc = test_acc
+                if MODEL_NAME == 'RobustH2GCN':
+                    final_gate = gate
             
             # 進捗表示
             if epoch % DISPLAY_PROGRESS_EVERY == 0:
@@ -1047,6 +1100,8 @@ else:
             final_train_acc = train_acc
             final_val_acc = val_acc
             final_test_acc = test_acc
+            if MODEL_NAME == 'RobustH2GCN':
+                final_gate = gate
         
         # 結果を保存
         run_result = {
@@ -1058,9 +1113,13 @@ else:
             'best_test_acc': best_test_acc
         }
         
-        # ノイズ情報を保存（実験前のノイズ情報を使用）
-        if USE_FEATURE_NOISE:
-            run_result['noise_info'] = noise_info
+        # RobustH2GCNのgate値を保存
+        if MODEL_NAME == 'RobustH2GCN' and final_gate is not None:
+            run_result['final_gate'] = final_gate
+        
+        # 改変情報を保存（実験前の改変情報を使用）
+        if USE_FEATURE_MODIFICATION:
+            run_result['modification_info'] = modification_info
         
         # Early stopping情報を保存
         if USE_EARLY_STOPPING:
@@ -1074,21 +1133,30 @@ else:
         print(f"実験 {run + 1} 完了:")
         print(f"  最終結果 - Train: {final_train_acc:.4f}, Val: {final_val_acc:.4f}, Test: {final_test_acc:.4f}")
         print(f"  ベスト結果 - Val: {best_val_acc:.4f}, Test: {best_test_acc:.4f}")
+        
+        # RobustH2GCNのgate値を出力
+        if MODEL_NAME == 'RobustH2GCN' and final_gate is not None:
+            gate_mean = final_gate.mean().item()
+            gate_std = final_gate.std().item()
+            gate_min = final_gate.min().item()
+            gate_max = final_gate.max().item()
+            print(f"  Gate統計 - 平均: {gate_mean:.4f}, 標準偏差: {gate_std:.4f}, 範囲: [{gate_min:.4f}, {gate_max:.4f}]")
     
     # 詳細な結果表示
     print(f"\n=== 詳細結果 ===")
     for i, result in enumerate(all_results):
         alpha_info = ""
         
-        noise_info = ""
-        if USE_FEATURE_NOISE and 'noise_info' in result and result['noise_info'] is not None:
-            noise_info = f", ノイズ={result['noise_info'].get('noise_percentage', 0):.1%}"
+        modification_info = ""
+        if USE_FEATURE_MODIFICATION and 'modification_info' in result and result['modification_info'] is not None:
+            mod_count = len(result['modification_info'].get('modifications_applied', []))
+            modification_info = f", 改変={mod_count}個"
         
         early_stop_info = ""
         if USE_EARLY_STOPPING and result.get('early_stopped', False):
             early_stop_info = f", ES@{result.get('early_stopping_epoch', 'N/A')}"
         
-        print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{noise_info}{early_stop_info}")
+        print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{modification_info}{early_stop_info}")
     
     # 結果の集計と表示
     print(f"\n=== 実験結果統計 ({NUM_RUNS}回の平均) ===")
@@ -1127,9 +1195,35 @@ if USE_EARLY_STOPPING:
     print(f"  平均停止エポック: {np.mean(early_stopping_epochs):.1f} ± {np.std(early_stopping_epochs):.1f}")
     print(f"  停止エポック範囲: [{min(early_stopping_epochs)}, {max(early_stopping_epochs)}]")
 
-# ノイズ情報の統計表示
-if USE_FEATURE_NOISE:
-    print(f"ノイズ設定: タイプ={NOISE_TYPE}, 割合={NOISE_PERCENTAGE:.1%}")
+# 改変情報の統計表示
+if USE_FEATURE_MODIFICATION:
+    print(f"改変設定: {len(FEATURE_MODIFICATIONS)}個の改変")
+    for i, mod in enumerate(FEATURE_MODIFICATIONS):
+        mod_type = mod.get('type', 'unknown')
+        percentage = mod.get('percentage', 0.0)
+        if mod_type == 'noise':
+            method = mod.get('method', 'per_node')
+            print(f"  改変 {i+1}: ノイズ ({method}) - 割合: {percentage:.1%}")
+        elif mod_type == 'missingness':
+            print(f"  改変 {i+1}: 欠損 - 割合: {percentage:.1%}")
+        else:
+            print(f"  改変 {i+1}: {mod_type} - 割合: {percentage:.1%}")
+
+# RobustH2GCNのgate統計情報を表示
+if MODEL_NAME == 'RobustH2GCN':
+    gate_results = [r for r in all_results if 'final_gate' in r and r['final_gate'] is not None]
+    if gate_results:
+        print(f"\nRobustH2GCN Gate統計:")
+        gate_means = [r['final_gate'].mean().item() for r in gate_results]
+        gate_stds = [r['final_gate'].std().item() for r in gate_results]
+        gate_mins = [r['final_gate'].min().item() for r in gate_results]
+        gate_maxs = [r['final_gate'].max().item() for r in gate_results]
+        
+        print(f"  Gate平均値: {np.mean(gate_means):.4f} ± {np.std(gate_means):.4f}")
+        print(f"  Gate標準偏差: {np.mean(gate_stds):.4f} ± {np.std(gate_stds):.4f}")
+        print(f"  Gate最小値: {np.mean(gate_mins):.4f} ± {np.std(gate_mins):.4f}")
+        print(f"  Gate最大値: {np.mean(gate_maxs):.4f} ± {np.std(gate_maxs):.4f}")
+        print(f"  Gate値範囲: [{min(gate_mins):.4f}, {max(gate_maxs):.4f}]")
 
 
 print(f"\n=== 実験完了 ===")
@@ -1141,4 +1235,41 @@ print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_
 # Grid Search結果の最終サマリー
 if USE_GRID_SEARCH and 'grid_search_param' in all_results[0]:
     best_param = max(all_results, key=lambda x: x['best_val_acc'])['grid_search_param']
-    print(f"最適{GRID_SEARCH_PARAM}: {best_param}")
+    best_param_by_final_test = max(all_results, key=lambda x: x['final_test_acc'])['grid_search_param']
+    max_final_test_acc = max(r['final_test_acc'] for r in all_results)
+    
+    # 最終結果Test精度ベストのパラメータでの詳細統計を計算
+    best_final_test_results = [r for r in all_results if r['grid_search_param'] == best_param_by_final_test]
+    best_final_test_accs = [r['final_test_acc'] for r in best_final_test_results]
+    best_final_test_mean = np.mean(best_final_test_accs)
+    best_final_test_std = np.std(best_final_test_accs)
+    best_final_test_variance = np.var(best_final_test_accs)
+    
+    print(f"最適{GRID_SEARCH_PARAM} (検証精度ベスト): {best_param}")
+    print(f"最適{GRID_SEARCH_PARAM} (最終結果Test精度ベスト): {best_param_by_final_test}")
+    print(f"最終結果Test精度の最大値: {max_final_test_acc:.4f}")
+    
+    print(f"\n=== 最適{GRID_SEARCH_PARAM} ({best_param_by_final_test}) の詳細統計 ===")
+    print(f"最終結果Test精度:")
+    print(f"  平均値: {best_final_test_mean:.4f}")
+    print(f"  標準偏差: {best_final_test_std:.4f}")
+    print(f"  分散: {best_final_test_variance:.6f}")
+    print(f"  範囲: [{min(best_final_test_accs):.4f}, {max(best_final_test_accs):.4f}]")
+    print(f"  実験回数: {len(best_final_test_accs)}回")
+    
+    # RobustH2GCNの場合は最適パラメータでのgate統計も表示
+    if MODEL_NAME == 'RobustH2GCN':
+        best_param_gate_results = [r for r in best_final_test_results if 'final_gate' in r and r['final_gate'] is not None]
+        if best_param_gate_results:
+            print(f"\n最適{GRID_SEARCH_PARAM} ({best_param_by_final_test}) でのGate統計:")
+            gate_means = [r['final_gate'].mean().item() for r in best_param_gate_results]
+            gate_stds = [r['final_gate'].std().item() for r in best_param_gate_results]
+            gate_mins = [r['final_gate'].min().item() for r in best_param_gate_results]
+            gate_maxs = [r['final_gate'].max().item() for r in best_param_gate_results]
+            
+            print(f"  Gate平均値: {np.mean(gate_means):.4f} ± {np.std(gate_means):.4f}")
+            print(f"  Gate標準偏差: {np.mean(gate_stds):.4f} ± {np.std(gate_stds):.4f}")
+            print(f"  Gate最小値: {np.mean(gate_mins):.4f} ± {np.std(gate_mins):.4f}")
+            print(f"  Gate最大値: {np.mean(gate_maxs):.4f} ± {np.std(gate_maxs):.4f}")
+            print(f"  Gate値範囲: [{min(gate_mins):.4f}, {max(gate_maxs):.4f}]")
+            print(f"  Gate統計対象実験数: {len(best_param_gate_results)}回")
