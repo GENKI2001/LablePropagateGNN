@@ -1,6 +1,9 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
+import json
+import os
+from datetime import datetime
 from utils.dataset_loader import load_dataset, get_supported_datasets
 from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info, create_similarity_based_edges, create_similarity_based_edges_with_original
 from utils.adjacency_creator import create_normalized_adjacency_matrices, get_adjacency_matrix, apply_adjacency_to_features, combine_hop_features, print_adjacency_info, make_undirected
@@ -16,14 +19,14 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Texas'  # ここを変更してデータセットを切り替え
 
 # サポートされているモデル:
 # - 'MLP', 'GCN', 'GAT', 'H2GCN', 'RobustH2GCN', 'MixHop', 'GraphSAGE'
 MODEL_NAME = 'RobustH2GCN'
 
 # 実験設定
-NUM_RUNS = 10  # 実験回数（テスト用に減らす）
+NUM_RUNS = 2  # 実験回数（テスト用に減らす）
 NUM_EPOCHS = 600  # エポック数（テスト用に減らす）
 
 # 特徴量作成設定
@@ -33,7 +36,7 @@ DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化�
 
 # Grid Search対象パラメータの設定
 GRID_SEARCH_PARAMS = {
-    'HIDDEN_CHANNELS': [8, 32, 64],  # 隠れ層次元
+    'HIDDEN_CHANNELS': [32, 64],  # 隠れ層次元
     'NUM_LAYERS': [1, 2],                   # レイヤー数
     'MAX_HOPS': [1, 2, 3, 4],     # 最大hop数
     'TEMPERATURE': [0.5, 2.5],          # 温度パラメータ
@@ -91,6 +94,321 @@ SHOW_FEATURE_DETAILS = False  # 特徴量の詳細を表示するか
 
 # デバイス設定
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# ============================================================================
+# 結果保存関数
+# ============================================================================
+
+def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL_NAME, 
+                           NUM_RUNS, NUM_EPOCHS, GRID_SEARCH_PARAMS, USE_FEATURE_MODIFICATION, 
+                           FEATURE_MODIFICATIONS, USE_SIMILARITY_BASED_EDGES, USE_EARLY_STOPPING,
+                           EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MIN_DELTA, TRAIN_RATIO, 
+                           VAL_RATIO, TEST_RATIO, LEARNING_RATE, WEIGHT_DECAY, 
+                           CALC_NEIGHBOR_LABEL_FEATURES, COMBINE_NEIGHBOR_LABEL_FEATURES,
+                           DISABLE_ORIGINAL_FEATURES, USE_PCA, PCA_COMPONENTS,
+                           SIMILARITY_EDGE_MODE, SIMILARITY_FEATURE_TYPE, 
+                           SIMILARITY_RAW_THRESHOLD, SIMILARITY_LABEL_THRESHOLD,
+                           MIXHOP_POWERS, GRAPHSAGE_AGGR, GAT_NUM_HEADS, GAT_CONCAT):
+    """
+    実験結果をJSONファイルとして保存する関数
+    """
+    # データセット名とモデル名に応じた結果ディレクトリを作成
+    result_dir = f"result/{DATASET_NAME.lower()}/{MODEL_NAME.lower()}"
+    os.makedirs(result_dir, exist_ok=True)
+    
+    # タイムスタンプを取得
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    
+    # 実験設定を保存
+    experiment_config = {
+        "dataset_name": DATASET_NAME,
+        "model_name": MODEL_NAME,
+        "num_runs": NUM_RUNS,
+        "num_epochs": NUM_EPOCHS,
+        "calc_neighbor_label_features": CALC_NEIGHBOR_LABEL_FEATURES,
+        "combine_neighbor_label_features": COMBINE_NEIGHBOR_LABEL_FEATURES,
+        "disable_original_features": DISABLE_ORIGINAL_FEATURES,
+        "use_feature_modification": USE_FEATURE_MODIFICATION,
+        "feature_modifications": FEATURE_MODIFICATIONS,
+        "use_similarity_based_edges": USE_SIMILARITY_BASED_EDGES,
+        "similarity_edge_mode": SIMILARITY_EDGE_MODE,
+        "similarity_feature_type": SIMILARITY_FEATURE_TYPE,
+        "similarity_raw_threshold": SIMILARITY_RAW_THRESHOLD,
+        "similarity_label_threshold": SIMILARITY_LABEL_THRESHOLD,
+        "mixhop_powers": MIXHOP_POWERS,
+        "graphsage_aggr": GRAPHSAGE_AGGR,
+        "gat_num_heads": GAT_NUM_HEADS,
+        "gat_concat": GAT_CONCAT,
+        "use_pca": USE_PCA,
+        "pca_components": PCA_COMPONENTS,
+        "train_ratio": TRAIN_RATIO,
+        "val_ratio": VAL_RATIO,
+        "test_ratio": TEST_RATIO,
+        "learning_rate": LEARNING_RATE,
+        "weight_decay": WEIGHT_DECAY,
+        "use_early_stopping": USE_EARLY_STOPPING,
+        "early_stopping_patience": EARLY_STOPPING_PATIENCE,
+        "early_stopping_min_delta": EARLY_STOPPING_MIN_DELTA,
+        "grid_search_parameters": GRID_SEARCH_PARAMS
+    }
+    
+    with open(f"{result_dir}/experiment_config_{timestamp}.json", 'w', encoding='utf-8') as f:
+        json.dump(experiment_config, f, indent=2, ensure_ascii=False)
+    
+    # 統計情報を計算
+    final_train_accs = [r['final_train_acc'] for r in all_results]
+    final_val_accs = [r['final_val_acc'] for r in all_results]
+    final_test_accs = [r['final_test_acc'] for r in all_results]
+    best_val_accs = [r['best_val_acc'] for r in all_results]
+    best_test_accs = [r['best_test_acc'] for r in all_results]
+    
+    # 全体的な統計
+    overall_stats = {
+        "total_experiments": len(all_results),
+        "final_results": {
+            "train": {"mean": float(np.mean(final_train_accs)), "std": float(np.std(final_train_accs))},
+            "val": {"mean": float(np.mean(final_val_accs)), "std": float(np.std(final_val_accs))},
+            "test": {"mean": float(np.mean(final_test_accs)), "std": float(np.std(final_test_accs))}
+        },
+        "best_results": {
+            "val": {"mean": float(np.mean(best_val_accs)), "std": float(np.std(best_val_accs))},
+            "test": {"mean": float(np.mean(best_test_accs)), "std": float(np.std(best_test_accs))}
+        }
+    }
+    
+    # Early stopping統計
+    if USE_EARLY_STOPPING:
+        early_stopped_count = sum(1 for r in all_results if r.get('early_stopped', False))
+        early_stopping_epochs = [r.get('early_stopping_epoch', NUM_EPOCHS) for r in all_results]
+        overall_stats["early_stopping"] = {
+            "early_stopped_experiments": early_stopped_count,
+            "early_stopping_rate": early_stopped_count / len(all_results),
+            "average_stopping_epoch": float(np.mean(early_stopping_epochs)),
+            "stopping_epoch_std": float(np.std(early_stopping_epochs)),
+            "stopping_epoch_range": [int(min(early_stopping_epochs)), int(max(early_stopping_epochs))]
+        }
+    
+    # 改変情報の統計
+    if USE_FEATURE_MODIFICATION:
+        overall_stats["feature_modification"] = {
+            "modifications_applied": len(FEATURE_MODIFICATIONS),
+            "modification_types": [mod.get('type', 'unknown') for mod in FEATURE_MODIFICATIONS]
+        }
+    
+    with open(f"{result_dir}/experiment_statistics_{timestamp}.json", 'w', encoding='utf-8') as f:
+        json.dump(overall_stats, f, indent=2, ensure_ascii=False)
+    
+    # Grid Search結果の処理
+    if total_combinations > 1 and 'grid_search_params' in all_results[0]:
+        # 各組み合わせの結果を集計
+        combination_results = {}
+        for result in all_results:
+            param_key = tuple(sorted(result['grid_search_params'].items()))
+            if param_key not in combination_results:
+                combination_results[param_key] = []
+            combination_results[param_key].append(result)
+        
+        # 各組み合わせの統計を計算
+        combination_stats = []
+        for param_key, results in combination_results.items():
+            param_dict = dict(param_key)
+            final_test_accs = [r['final_test_acc'] for r in results]
+            best_test_accs = [r['best_test_acc'] for r in results]
+            final_val_accs = [r['final_val_acc'] for r in results]
+            best_val_accs = [r['best_val_acc'] for r in results]
+            
+            combination_stats.append({
+                "parameters": param_dict,
+                "final_test_accuracy": {
+                    "mean": float(np.mean(final_test_accs)),
+                    "std": float(np.std(final_test_accs)),
+                    "max": float(max(final_test_accs))
+                },
+                "best_test_accuracy": {
+                    "mean": float(np.mean(best_test_accs)),
+                    "std": float(np.std(best_test_accs)),
+                    "max": float(max(best_test_accs))
+                },
+                "final_val_accuracy": {
+                    "mean": float(np.mean(final_val_accs)),
+                    "std": float(np.std(final_val_accs)),
+                    "max": float(max(final_val_accs))
+                },
+                "best_val_accuracy": {
+                    "mean": float(np.mean(best_val_accs)),
+                    "std": float(np.std(best_val_accs)),
+                    "max": float(max(best_val_accs))
+                },
+                "experiment_count": len(results)
+            })
+        
+        # 最終テスト精度の平均値でソート
+        combination_stats.sort(key=lambda x: x['final_test_accuracy']['mean'], reverse=True)
+        
+        # 最適パラメータを特定
+        best_by_val = max(combination_stats, key=lambda x: x['best_val_accuracy']['mean'])
+        best_by_test = max(combination_stats, key=lambda x: x['final_test_accuracy']['mean'])
+        
+        grid_search_results = {
+            "total_combinations": total_combinations,
+            "total_experiments": len(all_results),
+            "best_combination_by_val": best_by_val,
+            "best_combination_by_test": best_by_test,
+            "top_10_combinations": combination_stats[:10],
+            "all_combinations": combination_stats
+        }
+        
+        with open(f"{result_dir}/grid_search_results_{timestamp}.json", 'w', encoding='utf-8') as f:
+            json.dump(grid_search_results, f, indent=2, ensure_ascii=False)
+    
+    # RobustH2GCNのGate統計
+    if MODEL_NAME == 'RobustH2GCN':
+        gate_results = [r for r in all_results if 'final_gate' in r and r['final_gate'] is not None]
+        if gate_results:
+            gate_means = [r['final_gate'].mean().item() for r in gate_results]
+            gate_stds = [r['final_gate'].std().item() for r in gate_results]
+            gate_mins = [r['final_gate'].min().item() for r in gate_results]
+            gate_maxs = [r['final_gate'].max().item() for r in gate_results]
+            
+            gate_stats = {
+                "gate_statistics": {
+                    "gate_mean": {
+                        "mean": float(np.mean(gate_means)),
+                        "std": float(np.std(gate_means))
+                    },
+                    "gate_std": {
+                        "mean": float(np.mean(gate_stds)),
+                        "std": float(np.std(gate_stds))
+                    },
+                    "gate_min": {
+                        "mean": float(np.mean(gate_mins)),
+                        "std": float(np.std(gate_mins))
+                    },
+                    "gate_max": {
+                        "mean": float(np.mean(gate_maxs)),
+                        "std": float(np.std(gate_maxs))
+                    },
+                    "gate_range": [float(min(gate_mins)), float(max(gate_maxs))],
+                    "experiment_count": len(gate_results)
+                }
+            }
+            
+            # 最適パラメータでのGate統計も追加
+            if total_combinations > 1 and 'grid_search_params' in all_results[0]:
+                best_params = best_by_val['parameters']
+                best_param_gate_results = [r for r in gate_results if r['grid_search_params'] == best_params]
+                if best_param_gate_results:
+                    best_gate_means = [r['final_gate'].mean().item() for r in best_param_gate_results]
+                    best_gate_stds = [r['final_gate'].std().item() for r in best_param_gate_results]
+                    best_gate_mins = [r['final_gate'].min().item() for r in best_param_gate_results]
+                    best_gate_maxs = [r['final_gate'].max().item() for r in best_param_gate_results]
+                    
+                    gate_stats["best_parameter_gate_stats"] = {
+                        "gate_mean": {
+                            "mean": float(np.mean(best_gate_means)),
+                            "std": float(np.std(best_gate_means))
+                        },
+                        "gate_std": {
+                            "mean": float(np.mean(best_gate_stds)),
+                            "std": float(np.std(best_gate_stds))
+                        },
+                        "gate_min": {
+                            "mean": float(np.mean(best_gate_mins)),
+                            "std": float(np.std(best_gate_mins))
+                        },
+                        "gate_max": {
+                            "mean": float(np.mean(best_gate_maxs)),
+                            "std": float(np.std(best_gate_maxs))
+                        },
+                        "gate_range": [float(min(best_gate_mins)), float(max(best_gate_maxs))],
+                        "experiment_count": len(best_param_gate_results),
+                        "best_parameters": best_params
+                    }
+            
+            with open(f"{result_dir}/robust_h2gcn_gate_stats_{timestamp}.json", 'w', encoding='utf-8') as f:
+                json.dump(gate_stats, f, indent=2, ensure_ascii=False)
+    
+    # 結果サマリーをテキストファイルとして保存
+    summary_text = f"""=== {MODEL_NAME} on {DATASET_NAME} Dataset - Grid Search Results ===
+Date: {timestamp}
+
+EXPERIMENT SETTINGS:
+- Dataset: {DATASET_NAME}
+- Model: {MODEL_NAME}
+- Number of runs: {NUM_RUNS}
+- Number of epochs: {NUM_EPOCHS}
+- Grid search combinations: {total_combinations}
+- Total experiments: {len(all_results)}
+
+GRID SEARCH PARAMETERS:
+"""
+    
+    for param_name, values in GRID_SEARCH_PARAMS.items():
+        summary_text += f"- {param_name}: {values}\n"
+    
+    if total_combinations > 1 and 'grid_search_params' in all_results[0]:
+        summary_text += "\nTOP 10 PARAMETER COMBINATIONS (by final test accuracy):\n\n"
+        for i, combo in enumerate(combination_stats[:10]):
+            param_str = ", ".join([f"{k}={v}" for k, v in combo['parameters'].items()])
+            acc_info = combo['final_test_accuracy']
+            summary_text += f"{i+1}. {param_str}\n"
+            summary_text += f"   Final Test Accuracy: {acc_info['mean']:.4f} ± {acc_info['std']:.4f} (max: {acc_info['max']:.4f})\n\n"
+        
+        summary_text += f"RECOMMENDED PARAMETERS:\n"
+        summary_text += f"Based on validation accuracy: {', '.join([f'{k}={v}' for k, v in best_by_val['parameters'].items()])}\n"
+        summary_text += f"Based on final test accuracy: {', '.join([f'{k}={v}' for k, v in best_by_test['parameters'].items()])}\n\n"
+    
+    summary_text += f"BEST PERFORMANCE:\n"
+    summary_text += f"- Maximum final test accuracy: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}\n"
+    summary_text += f"- Best single run test accuracy: {max(final_test_accs):.4f}\n\n"
+    
+    if MODEL_NAME == 'RobustH2GCN' and gate_results:
+        summary_text += f"ROBUST H2GCN GATE STATISTICS:\n"
+        summary_text += f"- Gate mean: {np.mean(gate_means):.4f} ± {np.std(gate_means):.4f}\n"
+        summary_text += f"- Gate standard deviation: {np.mean(gate_stds):.4f} ± {np.std(gate_stds):.4f}\n"
+        summary_text += f"- Gate minimum: {np.mean(gate_mins):.4f} ± {np.std(gate_mins):.4f}\n"
+        summary_text += f"- Gate maximum: {np.mean(gate_maxs):.4f} ± {np.std(gate_maxs):.4f}\n"
+        summary_text += f"- Gate range: [{min(gate_mins):.4f}, {max(gate_maxs):.4f}]\n\n"
+    
+    if USE_EARLY_STOPPING:
+        early_stopped_count = sum(1 for r in all_results if r.get('early_stopped', False))
+        early_stopping_epochs = [r.get('early_stopping_epoch', NUM_EPOCHS) for r in all_results]
+        summary_text += f"EARLY STOPPING STATISTICS:\n"
+        summary_text += f"- Early stopped experiments: {early_stopped_count}/{len(all_results)} ({early_stopped_count/len(all_results):.1%})\n"
+        summary_text += f"- Average stopping epoch: {np.mean(early_stopping_epochs):.1f} ± {np.std(early_stopping_epochs):.1f}\n"
+        summary_text += f"- Stopping epoch range: [{min(early_stopping_epochs)}, {max(early_stopping_epochs)}]\n\n"
+    
+    if USE_FEATURE_MODIFICATION:
+        summary_text += f"FEATURE MODIFICATION STATISTICS:\n"
+        summary_text += f"- Modifications applied: {len(FEATURE_MODIFICATIONS)}\n"
+        summary_text += f"- Modification types: {[mod.get('type', 'unknown') for mod in FEATURE_MODIFICATIONS]}\n\n"
+    
+    summary_text += f"CONCLUSION:\n"
+    if total_combinations > 1:
+        best_params = best_by_val['parameters']
+        best_acc = best_by_val['final_test_accuracy']['mean']
+        best_std = best_by_val['final_test_accuracy']['std']
+        summary_text += f"The best performing configuration uses {', '.join([f'{k}={v}' for k, v in best_params.items()])}, "
+        summary_text += f"achieving a final test accuracy of {best_acc:.1%} ± {best_std:.1%}.\n"
+    else:
+        summary_text += f"The experiment achieved a final test accuracy of {np.mean(final_test_accs):.1%} ± {np.std(final_test_accs):.1%}.\n"
+    
+    if MODEL_NAME == 'RobustH2GCN':
+        summary_text += f"The RobustH2GCN model shows good performance with gate values indicating effective "
+        summary_text += f"feature selection between node features and label features."
+    
+    with open(f"{result_dir}/results_summary_{timestamp}.txt", 'w', encoding='utf-8') as f:
+        f.write(summary_text)
+    
+    print(f"\n=== 結果保存完了 ===")
+    print(f"結果ファイルが {result_dir}/ ディレクトリに保存されました:")
+    print(f"- experiment_config_{timestamp}.json")
+    print(f"- experiment_statistics_{timestamp}.json")
+    if total_combinations > 1:
+        print(f"- grid_search_results_{timestamp}.json")
+    if MODEL_NAME == 'RobustH2GCN':
+        print(f"- robust_h2gcn_gate_stats_{timestamp}.json")
+    print(f"- results_summary_{timestamp}.txt")
 
 # ============================================================================
 # メイン処理
@@ -1242,24 +1560,10 @@ if total_combinations > 1 and 'grid_search_params' in all_results[0]:
     best_final_test_std = np.std(best_final_test_accs)
     best_final_test_variance = np.var(best_final_test_accs)
     
-    print(f"最適パラメータ (検証精度ベスト):")
-    for param_name, param_value in best_params.items():
-        print(f"  {param_name}: {param_value}")
-    print(f"最適パラメータ (最終結果Test精度ベスト):")
-    for param_name, param_value in best_params_by_final_test.items():
-        print(f"  {param_name}: {param_value}")
-    
     # 最終テスト精度の最大値を達成した組み合わせを特定
     best_single_result = max(all_results, key=lambda x: x['final_test_acc'])
     best_single_params = best_single_result['grid_search_params']
     best_single_acc = best_single_result['final_test_acc']
-    
-    print(f"\n=== 最終テスト精度最大値達成組み合わせ ===")
-    print(f"最終テスト精度: {best_single_acc:.4f}")
-    print(f"パラメータ:")
-    for param_name, param_value in best_single_params.items():
-        print(f"  {param_name}: {param_value}")
-    print(f"実験回数: {best_single_result['run']}")
     
     # この組み合わせでの全実験結果を取得して統計を計算
     best_combination_results = [r for r in all_results if r['grid_search_params'] == best_single_params]
@@ -1348,4 +1652,18 @@ if total_combinations > 1 and 'grid_search_params' in all_results[0]:
                 print(f"  Gate最小値: {gate.min().item():.4f}")
                 print(f"  Gate最大値: {gate.max().item():.4f}")
                 print(f"  Gate値範囲: [{gate.min().item():.4f}, {gate.max().item():.4f}]")
+    
+    # 実験結果をファイルに保存
+    save_experiment_results(
+        all_results, total_combinations, DATASET_NAME, MODEL_NAME, 
+        NUM_RUNS, NUM_EPOCHS, GRID_SEARCH_PARAMS, USE_FEATURE_MODIFICATION, 
+        FEATURE_MODIFICATIONS, USE_SIMILARITY_BASED_EDGES, USE_EARLY_STOPPING,
+        EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MIN_DELTA, TRAIN_RATIO, 
+        VAL_RATIO, TEST_RATIO, LEARNING_RATE, WEIGHT_DECAY, 
+        CALC_NEIGHBOR_LABEL_FEATURES, COMBINE_NEIGHBOR_LABEL_FEATURES,
+        DISABLE_ORIGINAL_FEATURES, USE_PCA, PCA_COMPONENTS,
+        SIMILARITY_EDGE_MODE, SIMILARITY_FEATURE_TYPE, 
+        SIMILARITY_RAW_THRESHOLD, SIMILARITY_LABEL_THRESHOLD,
+        MIXHOP_POWERS, GRAPHSAGE_AGGR, GAT_NUM_HEADS, GAT_CONCAT
+    )
         
