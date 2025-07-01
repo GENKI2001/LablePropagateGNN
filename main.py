@@ -19,7 +19,7 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Texas'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
 
 # サポートされているモデル:
 # - 'MLP', 'GCN', 'GAT', 'H2GCN', 'RobustH2GCN', 'MixHop', 'GraphSAGE'
@@ -36,10 +36,10 @@ DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化�
 
 # Grid Search対象パラメータの設定
 GRID_SEARCH_PARAMS = {
-    'HIDDEN_CHANNELS': [32, 64],  # 隠れ層次元
+    'HIDDEN_CHANNELS': [16, 32, 64, 128],  # 隠れ層次元
     'NUM_LAYERS': [1, 2],                   # レイヤー数
-    'MAX_HOPS': [1, 2, 3, 4],     # 最大hop数
-    'TEMPERATURE': [0.5, 2.5],          # 温度パラメータ
+    'MAX_HOPS': [2, 3, 4],     # 最大hop数
+    'TEMPERATURE': [0.5, 1.0, 2.5],          # 温度パラメータ
     'DROPOUT': [0.5]          # ドロップアウト率
 }
 
