@@ -26,7 +26,7 @@ DATASET_NAME = 'Texas'  # ここを変更してデータセットを切り替え
 MODEL_NAME = 'RobustH2GCN'
 
 # 実験設定
-NUM_RUNS = 2  # 実験回数（テスト用に減らす）
+NUM_RUNS = 10  # 実験回数（テスト用に減らす）
 NUM_EPOCHS = 600  # エポック数（テスト用に減らす）
 
 # 特徴量作成設定
@@ -116,11 +116,13 @@ def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL
     result_dir = f"result/{DATASET_NAME.lower()}/{MODEL_NAME.lower()}"
     os.makedirs(result_dir, exist_ok=True)
     
-    # タイムスタンプを取得
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    
     # 実験設定を保存
     experiment_config = {
+        "experiment_info": {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "dataset": DATASET_NAME,
+            "model": MODEL_NAME
+        },
         "dataset_name": DATASET_NAME,
         "model_name": MODEL_NAME,
         "num_runs": NUM_RUNS,
@@ -152,7 +154,7 @@ def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL
         "grid_search_parameters": GRID_SEARCH_PARAMS
     }
     
-    with open(f"{result_dir}/experiment_config_{timestamp}.json", 'w', encoding='utf-8') as f:
+    with open(f"{result_dir}/experiment_config.json", 'w', encoding='utf-8') as f:
         json.dump(experiment_config, f, indent=2, ensure_ascii=False)
     
     # 統計情報を計算
@@ -164,6 +166,11 @@ def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL
     
     # 全体的な統計
     overall_stats = {
+        "experiment_info": {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "dataset": DATASET_NAME,
+            "model": MODEL_NAME
+        },
         "total_experiments": len(all_results),
         "final_results": {
             "train": {"mean": float(np.mean(final_train_accs)), "std": float(np.std(final_train_accs))},
@@ -195,7 +202,7 @@ def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL
             "modification_types": [mod.get('type', 'unknown') for mod in FEATURE_MODIFICATIONS]
         }
     
-    with open(f"{result_dir}/experiment_statistics_{timestamp}.json", 'w', encoding='utf-8') as f:
+    with open(f"{result_dir}/experiment_statistics.json", 'w', encoding='utf-8') as f:
         json.dump(overall_stats, f, indent=2, ensure_ascii=False)
     
     # Grid Search結果の処理
@@ -250,6 +257,11 @@ def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL
         best_by_test = max(combination_stats, key=lambda x: x['final_test_accuracy']['mean'])
         
         grid_search_results = {
+            "experiment_info": {
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "dataset": DATASET_NAME,
+                "model": MODEL_NAME
+            },
             "total_combinations": total_combinations,
             "total_experiments": len(all_results),
             "best_combination_by_val": best_by_val,
@@ -258,7 +270,7 @@ def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL
             "all_combinations": combination_stats
         }
         
-        with open(f"{result_dir}/grid_search_results_{timestamp}.json", 'w', encoding='utf-8') as f:
+        with open(f"{result_dir}/grid_search_results.json", 'w', encoding='utf-8') as f:
             json.dump(grid_search_results, f, indent=2, ensure_ascii=False)
     
     # RobustH2GCNのGate統計
@@ -271,6 +283,11 @@ def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL
             gate_maxs = [r['final_gate'].max().item() for r in gate_results]
             
             gate_stats = {
+                "experiment_info": {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "dataset": DATASET_NAME,
+                    "model": MODEL_NAME
+                },
                 "gate_statistics": {
                     "gate_mean": {
                         "mean": float(np.mean(gate_means)),
@@ -325,12 +342,12 @@ def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL
                         "best_parameters": best_params
                     }
             
-            with open(f"{result_dir}/robust_h2gcn_gate_stats_{timestamp}.json", 'w', encoding='utf-8') as f:
+            with open(f"{result_dir}/robust_h2gcn_gate_stats.json", 'w', encoding='utf-8') as f:
                 json.dump(gate_stats, f, indent=2, ensure_ascii=False)
     
     # 結果サマリーをテキストファイルとして保存
     summary_text = f"""=== {MODEL_NAME} on {DATASET_NAME} Dataset - Grid Search Results ===
-Date: {timestamp}
+Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 EXPERIMENT SETTINGS:
 - Dataset: {DATASET_NAME}
@@ -397,18 +414,19 @@ GRID SEARCH PARAMETERS:
         summary_text += f"The RobustH2GCN model shows good performance with gate values indicating effective "
         summary_text += f"feature selection between node features and label features."
     
-    with open(f"{result_dir}/results_summary_{timestamp}.txt", 'w', encoding='utf-8') as f:
+    with open(f"{result_dir}/results_summary.txt", 'w', encoding='utf-8') as f:
         f.write(summary_text)
     
     print(f"\n=== 結果保存完了 ===")
     print(f"結果ファイルが {result_dir}/ ディレクトリに保存されました:")
-    print(f"- experiment_config_{timestamp}.json")
-    print(f"- experiment_statistics_{timestamp}.json")
+    print(f"- experiment_config.json")
+    print(f"- experiment_statistics.json")
     if total_combinations > 1:
-        print(f"- grid_search_results_{timestamp}.json")
+        print(f"- grid_search_results.json")
     if MODEL_NAME == 'RobustH2GCN':
-        print(f"- robust_h2gcn_gate_stats_{timestamp}.json")
-    print(f"- results_summary_{timestamp}.txt")
+        print(f"- robust_h2gcn_gate_stats.json")
+    print(f"- results_summary.txt")
+    print(f"実験実行時刻: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # ============================================================================
 # メイン処理
