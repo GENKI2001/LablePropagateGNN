@@ -6,7 +6,6 @@ from .mlp import MLP
 from .h2gcn import H2GCN
 from .mixhop import MixHop
 from .graphsage import GraphSAGE
-from .gprgnn import GPRGNN
 from .robust_h2gcn import RobustH2GCN
 
 class ModelFactory:
@@ -130,21 +129,6 @@ class ModelFactory:
                 aggr=aggr
             )
         
-        elif model_name == 'GPRGNN':
-            alpha = kwargs.get('alpha', 0.1)
-            K = kwargs.get('K', 10)
-            Init = kwargs.get('Init', 'PPR')
-            return GPRGNN(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-                num_layers=default_params['num_layers'],
-                dropout=default_params['dropout'],
-                alpha=alpha,
-                K=K,
-                Init=Init
-            )
-        
 
         
         else:
@@ -202,11 +186,6 @@ class ModelFactory:
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'aggr'],
                 'default_hidden_channels': 16
             },
-            'GPRGNN': {
-                'description': 'GPR-GNN Model (Generalized PageRank Graph Neural Network)',
-                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'alpha', 'K', 'Init'],
-                'default_hidden_channels': 16
-            },
 
         }
         
@@ -220,4 +199,4 @@ class ModelFactory:
         Returns:
             list: サポートされているモデル名のリスト
         """
-        return ['GCN', 'GAT', 'MLP', 'LINKX', 'H2GCN', 'MixHop', 'GraphSAGE', 'GPRGNN'] 
+        return ['GCN', 'GAT', 'MLP', 'LINKX', 'H2GCN', 'MixHop', 'GraphSAGE'] 
