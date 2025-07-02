@@ -152,8 +152,6 @@ def create_label_features(data, device, max_hops=2, calc_neighbor_label_features
     neighbor_label_features = None
 
     if calc_neighbor_label_features:
-        print("隣接ノードのラベル特徴量を結合します")
-        print(f"温度パラメータ: {temperature}")
         one_hot_labels_tensor = torch.tensor(one_hot_labels, dtype=torch.float32)
         hop_features_list = []
         edge_index_np = edge_index.numpy()
@@ -190,8 +188,7 @@ def create_label_features(data, device, max_hops=2, calc_neighbor_label_features
 
         neighbor_label_features = torch.cat(hop_features_list, dim=1)
         combined_features = torch.cat([data.x, neighbor_label_features], dim=1)
-        print(f"結合後の特徴量の形状: {combined_features.shape}")
-        print(f"  - 現在の特徴量: {data.x.shape[1]}次元")
+        print(f"  - 生の特徴量: {data.x.shape[1]}次元")
         print(f"  - ラベル分布特徴量: {neighbor_label_features.shape[1]}次元")
     else:
         print("隣接ノードのラベル特徴量は結合しません")

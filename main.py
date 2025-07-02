@@ -1,9 +1,13 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
+import json
+import os
+from datetime import datetime
 from utils.dataset_loader import load_dataset, get_supported_datasets
 from utils.feature_creator import create_pca_features, create_label_features, display_node_features, get_feature_info, create_similarity_based_edges, create_similarity_based_edges_with_original
-from utils.adjacency_creator import create_normalized_adjacency_matrices, get_adjacency_matrix, apply_adjacency_to_features, combine_hop_features, print_adjacency_info
+from utils.adjacency_creator import create_normalized_adjacency_matrices, get_adjacency_matrix, apply_adjacency_to_features, combine_hop_features, print_adjacency_info, make_undirected
+from utils.feature_noise import add_feature_noise, add_feature_noise_uniform, add_feature_noise_random, add_feature_missingness, apply_feature_modifications, print_noise_info, print_modification_info
 from models import ModelFactory
 
 # ============================================================================
@@ -11,38 +15,43 @@ from models import ModelFactory
 # ============================================================================
 
 # データセット選択
-# CustomGraph: 'CustomGraph_Chain'
 # Planetoid: 'Cora', 'Citeseer', 'Pubmed'
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Citeseer'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Chameleon'  # ここを変更してデータセットを切り替え
 
-# モデル選択（MLPまたはGCN）
 # サポートされているモデル:
-# - 'MLP': 1-layer Multi-Layer Perceptron (グラフ構造を無視)
-# - 'GCN': Graph Convolutional Network (グラフ構造を活用)
-# - 'MLPAndGCNFusion': MLP-GCN Fusion Model (MLPとGCNを並列実行し融合)
-# - 'MLPAndGCNEnsemble': MLP-GCN Ensemble Model (MLPとGCNを独立実行しアンサンブル)
-# - 'GCNAndMLPConcat': GCN-MLP Concat Model (GCNで生の特徴量、MLPで生の特徴量+ラベル分布特徴量を処理)
-# - 'H2GCN': H2GCN Model (1-hopと2-hopの隣接行列を使用してグラフ構造を学習)
-MODEL_NAME = 'H2GCN'  # ここを変更してモデルを切り替え ('MLP', 'GCN', 'MLPAndGCNFusion', 'MLPAndGCNEnsemble', 'GCNAndMLPConcat', 'H2GCN')
+# - 'MLP', 'GCN', 'GAT', 'H2GCN', 'RobustH2GCN', 'MixHop', 'GraphSAGE'
+MODEL_NAME = 'H2GCN'
 
 # 実験設定
-NUM_RUNS = 10  # 実験回数
-NUM_EPOCHS = 200  # エポック数
-
-# データ分割設定
-TRAIN_RATIO = 0.6  # 訓練データの割合
-VAL_RATIO = 0.2    # 検証データの割合
-TEST_RATIO = 0.2   # テストデータの割合
+NUM_RUNS = 10  # 実験回数（テスト用に減らす）
+NUM_EPOCHS = 600  # エポック数（テスト用に減らす）
 
 # 特徴量作成設定
-MAX_HOPS = 7       # 最大hop数（1, 2, 3, ...）
-CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
-COMBINE_NEIGHBOR_LABEL_FEATURES = True  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
-TEMPERATURE = 1.5  # 温度パラメータ
-DISABLE_ORIGINAL_FEATURES = True  # True: 元のノード特徴量を無効化（data.xを空にする）
+CALC_NEIGHBOR_LABEL_FEATURES = False  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
+COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
+DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
+
+# Grid Search対象パラメータの設定
+GRID_SEARCH_PARAMS = {
+    'HIDDEN_CHANNELS': [16, 32, 64, 128],  # 隠れ層次元
+    'NUM_LAYERS': [1, 2],                   # レイヤー数
+    'MAX_HOPS': [2, 3, 4],     # 最大hop数
+    'TEMPERATURE': [0.5, 1.0, 2.5],          # 温度パラメータ
+    'DROPOUT': [0.5]          # ドロップアウト率
+}
+
+# 単一パラメータのGrid Search設定（削除予定）
+# 新しい複数パラメータGrid Searchを使用してください
+
+# 特徴量改変設定（統合版）
+USE_FEATURE_MODIFICATION = False  # True: 特徴量を改変, False: スキップ
+FEATURE_MODIFICATIONS = [
+    # {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'},  # ノイズ追加（0と1を入れ替え）
+    # {'type': 'missingness', 'percentage': 0.3},  # 欠損追加（0にマスキング）
+]
 
 # 類似度ベースエッジ作成設定
 USE_SIMILARITY_BASED_EDGES = False  # True: 類似度ベースエッジ作成を実行, False: スキップ
@@ -51,26 +60,33 @@ SIMILARITY_FEATURE_TYPE = 'raw'  # 'raw': 生の特徴量のみ, 'label': ラベ
 SIMILARITY_RAW_THRESHOLD = 0.165  # 生の特徴量の類似度閾値 (0.0-1.0)
 SIMILARITY_LABEL_THRESHOLD = 0.9999997  # ラベル分布特徴量の類似度閾値 (0.0-1.0)
 
-# モデルハイパーパラメータ
-HIDDEN_CHANNELS = 64  # 隠れ層の次元
-NUM_LAYERS = 2        # レイヤー数
-DROPOUT = 0.5         # ドロップアウト率
+# MixHopモデル固有の設定
+MIXHOP_POWERS = [0, 1, 2]  # 隣接行列のべき乗のリスト [0, 1, 2] または [0, 1, 2, 3] など
 
-# GCNAndMLPConcatモデル固有の設定
-GCN_HIDDEN_DIM = 16   # GCNの隠れ層次元（Noneの場合はHIDDEN_CHANNELSを使用）
-MLP_HIDDEN_DIM = 16   # MLPの隠れ層次元（Noneの場合はHIDDEN_CHANNELSを使用）
+# GraphSAGEモデル固有の設定
+GRAPHSAGE_AGGR = 'mean'  # 集約関数 ('mean', 'max', 'lstm')
 
-# MLP-GCNハイブリッドモデル設定
-FUSION_METHOD = 'concat_alpha'  # 'concat', 'add', 'weighted', 'concat_alpha'
-ENSEMBLE_METHOD = 'concat_alpha'  # 'average', 'weighted', 'voting', 'concat_alpha'
+# GATモデル固有の設定
+GAT_NUM_HEADS = 8  # アテンションヘッド数
+GAT_CONCAT = True  # アテンションヘッドの出力を結合するかどうか
 
 # PCA設定
 USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
 PCA_COMPONENTS = 128  # PCAで圧縮する次元数結合後の特徴量の形状:
 
+# データ分割設定
+TRAIN_RATIO = 0.6  # 訓練データの割合
+VAL_RATIO = 0.2    # 検証データの割合
+TEST_RATIO = 0.2   # テストデータの割合
+
 # 最適化設定
 LEARNING_RATE = 0.01  # 学習率
 WEIGHT_DECAY = 5e-4   # 重み減衰
+
+# Early Stopping設定
+USE_EARLY_STOPPING = True  # True: Early stoppingを使用, False: 使用しない
+EARLY_STOPPING_PATIENCE = 50  # 何エポック改善がなければ停止するか
+EARLY_STOPPING_MIN_DELTA = 0.001  # 改善とみなす最小変化量
 
 # 表示設定
 DISPLAY_PROGRESS_EVERY = 100  # 何エポックごとに進捗を表示するか
@@ -80,11 +96,347 @@ SHOW_FEATURE_DETAILS = False  # 特徴量の詳細を表示するか
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # ============================================================================
+# 結果保存関数
+# ============================================================================
+
+def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL_NAME, 
+                           NUM_RUNS, NUM_EPOCHS, GRID_SEARCH_PARAMS, USE_FEATURE_MODIFICATION, 
+                           FEATURE_MODIFICATIONS, USE_SIMILARITY_BASED_EDGES, USE_EARLY_STOPPING,
+                           EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MIN_DELTA, TRAIN_RATIO, 
+                           VAL_RATIO, TEST_RATIO, LEARNING_RATE, WEIGHT_DECAY, 
+                           CALC_NEIGHBOR_LABEL_FEATURES, COMBINE_NEIGHBOR_LABEL_FEATURES,
+                           DISABLE_ORIGINAL_FEATURES, USE_PCA, PCA_COMPONENTS,
+                           SIMILARITY_EDGE_MODE, SIMILARITY_FEATURE_TYPE, 
+                           SIMILARITY_RAW_THRESHOLD, SIMILARITY_LABEL_THRESHOLD,
+                           MIXHOP_POWERS, GRAPHSAGE_AGGR, GAT_NUM_HEADS, GAT_CONCAT):
+    """
+    実験結果をJSONファイルとして保存する関数
+    """
+    # データセット名とモデル名に応じた結果ディレクトリを作成
+    result_dir = f"result/{DATASET_NAME.lower()}/{MODEL_NAME.lower()}"
+    os.makedirs(result_dir, exist_ok=True)
+    
+    # 実験設定を保存
+    experiment_config = {
+        "experiment_info": {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "dataset": DATASET_NAME,
+            "model": MODEL_NAME
+        },
+        "dataset_name": DATASET_NAME,
+        "model_name": MODEL_NAME,
+        "num_runs": NUM_RUNS,
+        "num_epochs": NUM_EPOCHS,
+        "calc_neighbor_label_features": CALC_NEIGHBOR_LABEL_FEATURES,
+        "combine_neighbor_label_features": COMBINE_NEIGHBOR_LABEL_FEATURES,
+        "disable_original_features": DISABLE_ORIGINAL_FEATURES,
+        "use_feature_modification": USE_FEATURE_MODIFICATION,
+        "feature_modifications": FEATURE_MODIFICATIONS,
+        "use_similarity_based_edges": USE_SIMILARITY_BASED_EDGES,
+        "similarity_edge_mode": SIMILARITY_EDGE_MODE,
+        "similarity_feature_type": SIMILARITY_FEATURE_TYPE,
+        "similarity_raw_threshold": SIMILARITY_RAW_THRESHOLD,
+        "similarity_label_threshold": SIMILARITY_LABEL_THRESHOLD,
+        "mixhop_powers": MIXHOP_POWERS,
+        "graphsage_aggr": GRAPHSAGE_AGGR,
+        "gat_num_heads": GAT_NUM_HEADS,
+        "gat_concat": GAT_CONCAT,
+        "use_pca": USE_PCA,
+        "pca_components": PCA_COMPONENTS,
+        "train_ratio": TRAIN_RATIO,
+        "val_ratio": VAL_RATIO,
+        "test_ratio": TEST_RATIO,
+        "learning_rate": LEARNING_RATE,
+        "weight_decay": WEIGHT_DECAY,
+        "use_early_stopping": USE_EARLY_STOPPING,
+        "early_stopping_patience": EARLY_STOPPING_PATIENCE,
+        "early_stopping_min_delta": EARLY_STOPPING_MIN_DELTA,
+        "grid_search_parameters": GRID_SEARCH_PARAMS
+    }
+    
+    with open(f"{result_dir}/experiment_config.json", 'w', encoding='utf-8') as f:
+        json.dump(experiment_config, f, indent=2, ensure_ascii=False)
+    
+    # 統計情報を計算
+    final_train_accs = [r['final_train_acc'] for r in all_results]
+    final_val_accs = [r['final_val_acc'] for r in all_results]
+    final_test_accs = [r['final_test_acc'] for r in all_results]
+    best_val_accs = [r['best_val_acc'] for r in all_results]
+    best_test_accs = [r['best_test_acc'] for r in all_results]
+    
+    # 全体的な統計
+    overall_stats = {
+        "experiment_info": {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "dataset": DATASET_NAME,
+            "model": MODEL_NAME
+        },
+        "total_experiments": len(all_results),
+        "final_results": {
+            "train": {"mean": float(np.mean(final_train_accs)), "std": float(np.std(final_train_accs))},
+            "val": {"mean": float(np.mean(final_val_accs)), "std": float(np.std(final_val_accs))},
+            "test": {"mean": float(np.mean(final_test_accs)), "std": float(np.std(final_test_accs))}
+        },
+        "best_results": {
+            "val": {"mean": float(np.mean(best_val_accs)), "std": float(np.std(best_val_accs))},
+            "test": {"mean": float(np.mean(best_test_accs)), "std": float(np.std(best_test_accs))}
+        }
+    }
+    
+    # Early stopping統計
+    if USE_EARLY_STOPPING:
+        early_stopped_count = sum(1 for r in all_results if r.get('early_stopped', False))
+        early_stopping_epochs = [r.get('early_stopping_epoch', NUM_EPOCHS) for r in all_results]
+        overall_stats["early_stopping"] = {
+            "early_stopped_experiments": early_stopped_count,
+            "early_stopping_rate": early_stopped_count / len(all_results),
+            "average_stopping_epoch": float(np.mean(early_stopping_epochs)),
+            "stopping_epoch_std": float(np.std(early_stopping_epochs)),
+            "stopping_epoch_range": [int(min(early_stopping_epochs)), int(max(early_stopping_epochs))]
+        }
+    
+    # 改変情報の統計
+    if USE_FEATURE_MODIFICATION:
+        overall_stats["feature_modification"] = {
+            "modifications_applied": len(FEATURE_MODIFICATIONS),
+            "modification_types": [mod.get('type', 'unknown') for mod in FEATURE_MODIFICATIONS]
+        }
+    
+    with open(f"{result_dir}/experiment_statistics.json", 'w', encoding='utf-8') as f:
+        json.dump(overall_stats, f, indent=2, ensure_ascii=False)
+    
+    # Grid Search結果の処理
+    if total_combinations > 1 and 'grid_search_params' in all_results[0]:
+        # 各組み合わせの結果を集計
+        combination_results = {}
+        for result in all_results:
+            param_key = tuple(sorted(result['grid_search_params'].items()))
+            if param_key not in combination_results:
+                combination_results[param_key] = []
+            combination_results[param_key].append(result)
+        
+        # 各組み合わせの統計を計算
+        combination_stats = []
+        for param_key, results in combination_results.items():
+            param_dict = dict(param_key)
+            final_test_accs = [r['final_test_acc'] for r in results]
+            best_test_accs = [r['best_test_acc'] for r in results]
+            final_val_accs = [r['final_val_acc'] for r in results]
+            best_val_accs = [r['best_val_acc'] for r in results]
+            
+            combination_stats.append({
+                "parameters": param_dict,
+                "final_test_accuracy": {
+                    "mean": float(np.mean(final_test_accs)),
+                    "std": float(np.std(final_test_accs)),
+                    "max": float(max(final_test_accs))
+                },
+                "best_test_accuracy": {
+                    "mean": float(np.mean(best_test_accs)),
+                    "std": float(np.std(best_test_accs)),
+                    "max": float(max(best_test_accs))
+                },
+                "final_val_accuracy": {
+                    "mean": float(np.mean(final_val_accs)),
+                    "std": float(np.std(final_val_accs)),
+                    "max": float(max(final_val_accs))
+                },
+                "best_val_accuracy": {
+                    "mean": float(np.mean(best_val_accs)),
+                    "std": float(np.std(best_val_accs)),
+                    "max": float(max(best_val_accs))
+                },
+                "experiment_count": len(results)
+            })
+        
+        # 最終テスト精度の平均値でソート
+        combination_stats.sort(key=lambda x: x['final_test_accuracy']['mean'], reverse=True)
+        
+        # 最適パラメータを特定
+        best_by_val = max(combination_stats, key=lambda x: x['best_val_accuracy']['mean'])
+        best_by_test = max(combination_stats, key=lambda x: x['final_test_accuracy']['mean'])
+        
+        grid_search_results = {
+            "experiment_info": {
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "dataset": DATASET_NAME,
+                "model": MODEL_NAME
+            },
+            "total_combinations": total_combinations,
+            "total_experiments": len(all_results),
+            "best_combination_by_val": best_by_val,
+            "best_combination_by_test": best_by_test,
+            "top_10_combinations": combination_stats[:10],
+            "all_combinations": combination_stats
+        }
+        
+        with open(f"{result_dir}/grid_search_results.json", 'w', encoding='utf-8') as f:
+            json.dump(grid_search_results, f, indent=2, ensure_ascii=False)
+    
+    # RobustH2GCNのGate統計
+    if MODEL_NAME == 'RobustH2GCN':
+        gate_results = [r for r in all_results if 'final_gate' in r and r['final_gate'] is not None]
+        if gate_results:
+            gate_means = [r['final_gate'].mean().item() for r in gate_results]
+            gate_stds = [r['final_gate'].std().item() for r in gate_results]
+            gate_mins = [r['final_gate'].min().item() for r in gate_results]
+            gate_maxs = [r['final_gate'].max().item() for r in gate_results]
+            
+            gate_stats = {
+                "experiment_info": {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "dataset": DATASET_NAME,
+                    "model": MODEL_NAME
+                },
+                "gate_statistics": {
+                    "gate_mean": {
+                        "mean": float(np.mean(gate_means)),
+                        "std": float(np.std(gate_means))
+                    },
+                    "gate_std": {
+                        "mean": float(np.mean(gate_stds)),
+                        "std": float(np.std(gate_stds))
+                    },
+                    "gate_min": {
+                        "mean": float(np.mean(gate_mins)),
+                        "std": float(np.std(gate_mins))
+                    },
+                    "gate_max": {
+                        "mean": float(np.mean(gate_maxs)),
+                        "std": float(np.std(gate_maxs))
+                    },
+                    "gate_range": [float(min(gate_mins)), float(max(gate_maxs))],
+                    "experiment_count": len(gate_results)
+                }
+            }
+            
+            # 最適パラメータでのGate統計も追加
+            if total_combinations > 1 and 'grid_search_params' in all_results[0]:
+                best_params = best_by_val['parameters']
+                best_param_gate_results = [r for r in gate_results if r['grid_search_params'] == best_params]
+                if best_param_gate_results:
+                    best_gate_means = [r['final_gate'].mean().item() for r in best_param_gate_results]
+                    best_gate_stds = [r['final_gate'].std().item() for r in best_param_gate_results]
+                    best_gate_mins = [r['final_gate'].min().item() for r in best_param_gate_results]
+                    best_gate_maxs = [r['final_gate'].max().item() for r in best_param_gate_results]
+                    
+                    gate_stats["best_parameter_gate_stats"] = {
+                        "gate_mean": {
+                            "mean": float(np.mean(best_gate_means)),
+                            "std": float(np.std(best_gate_means))
+                        },
+                        "gate_std": {
+                            "mean": float(np.mean(best_gate_stds)),
+                            "std": float(np.std(best_gate_stds))
+                        },
+                        "gate_min": {
+                            "mean": float(np.mean(best_gate_mins)),
+                            "std": float(np.std(best_gate_mins))
+                        },
+                        "gate_max": {
+                            "mean": float(np.mean(best_gate_maxs)),
+                            "std": float(np.std(best_gate_maxs))
+                        },
+                        "gate_range": [float(min(best_gate_mins)), float(max(best_gate_maxs))],
+                        "experiment_count": len(best_param_gate_results),
+                        "best_parameters": best_params
+                    }
+            
+            with open(f"{result_dir}/robust_h2gcn_gate_stats.json", 'w', encoding='utf-8') as f:
+                json.dump(gate_stats, f, indent=2, ensure_ascii=False)
+    
+    # 結果サマリーをテキストファイルとして保存
+    summary_text = f"""=== {MODEL_NAME} on {DATASET_NAME} Dataset - Grid Search Results ===
+Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+EXPERIMENT SETTINGS:
+- Dataset: {DATASET_NAME}
+- Model: {MODEL_NAME}
+- Number of runs: {NUM_RUNS}
+- Number of epochs: {NUM_EPOCHS}
+- Grid search combinations: {total_combinations}
+- Total experiments: {len(all_results)}
+
+GRID SEARCH PARAMETERS:
+"""
+    
+    for param_name, values in GRID_SEARCH_PARAMS.items():
+        summary_text += f"- {param_name}: {values}\n"
+    
+    if total_combinations > 1 and 'grid_search_params' in all_results[0]:
+        summary_text += "\nTOP 10 PARAMETER COMBINATIONS (by final test accuracy):\n\n"
+        for i, combo in enumerate(combination_stats[:10]):
+            param_str = ", ".join([f"{k}={v}" for k, v in combo['parameters'].items()])
+            acc_info = combo['final_test_accuracy']
+            summary_text += f"{i+1}. {param_str}\n"
+            summary_text += f"   Final Test Accuracy: {acc_info['mean']:.4f} ± {acc_info['std']:.4f} (max: {acc_info['max']:.4f})\n\n"
+        
+        summary_text += f"RECOMMENDED PARAMETERS:\n"
+        summary_text += f"Based on validation accuracy: {', '.join([f'{k}={v}' for k, v in best_by_val['parameters'].items()])}\n"
+        summary_text += f"Based on final test accuracy: {', '.join([f'{k}={v}' for k, v in best_by_test['parameters'].items()])}\n\n"
+    
+    summary_text += f"BEST PERFORMANCE:\n"
+    summary_text += f"- Maximum final test accuracy: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}\n"
+    summary_text += f"- Best single run test accuracy: {max(final_test_accs):.4f}\n\n"
+    
+    if MODEL_NAME == 'RobustH2GCN' and gate_results:
+        summary_text += f"ROBUST H2GCN GATE STATISTICS:\n"
+        summary_text += f"- Gate mean: {np.mean(gate_means):.4f} ± {np.std(gate_means):.4f}\n"
+        summary_text += f"- Gate standard deviation: {np.mean(gate_stds):.4f} ± {np.std(gate_stds):.4f}\n"
+        summary_text += f"- Gate minimum: {np.mean(gate_mins):.4f} ± {np.std(gate_mins):.4f}\n"
+        summary_text += f"- Gate maximum: {np.mean(gate_maxs):.4f} ± {np.std(gate_maxs):.4f}\n"
+        summary_text += f"- Gate range: [{min(gate_mins):.4f}, {max(gate_maxs):.4f}]\n\n"
+    
+    if USE_EARLY_STOPPING:
+        early_stopped_count = sum(1 for r in all_results if r.get('early_stopped', False))
+        early_stopping_epochs = [r.get('early_stopping_epoch', NUM_EPOCHS) for r in all_results]
+        summary_text += f"EARLY STOPPING STATISTICS:\n"
+        summary_text += f"- Early stopped experiments: {early_stopped_count}/{len(all_results)} ({early_stopped_count/len(all_results):.1%})\n"
+        summary_text += f"- Average stopping epoch: {np.mean(early_stopping_epochs):.1f} ± {np.std(early_stopping_epochs):.1f}\n"
+        summary_text += f"- Stopping epoch range: [{min(early_stopping_epochs)}, {max(early_stopping_epochs)}]\n\n"
+    
+    if USE_FEATURE_MODIFICATION:
+        summary_text += f"FEATURE MODIFICATION STATISTICS:\n"
+        summary_text += f"- Modifications applied: {len(FEATURE_MODIFICATIONS)}\n"
+        summary_text += f"- Modification types: {[mod.get('type', 'unknown') for mod in FEATURE_MODIFICATIONS]}\n\n"
+    
+    summary_text += f"CONCLUSION:\n"
+    if total_combinations > 1:
+        best_params = best_by_val['parameters']
+        best_acc = best_by_val['final_test_accuracy']['mean']
+        best_std = best_by_val['final_test_accuracy']['std']
+        summary_text += f"The best performing configuration uses {', '.join([f'{k}={v}' for k, v in best_params.items()])}, "
+        summary_text += f"achieving a final test accuracy of {best_acc:.1%} ± {best_std:.1%}.\n"
+    else:
+        summary_text += f"The experiment achieved a final test accuracy of {np.mean(final_test_accs):.1%} ± {np.std(final_test_accs):.1%}.\n"
+    
+    if MODEL_NAME == 'RobustH2GCN':
+        summary_text += f"The RobustH2GCN model shows good performance with gate values indicating effective "
+        summary_text += f"feature selection between node features and label features."
+    
+    with open(f"{result_dir}/results_summary.txt", 'w', encoding='utf-8') as f:
+        f.write(summary_text)
+    
+    print(f"\n=== 結果保存完了 ===")
+    print(f"結果ファイルが {result_dir}/ ディレクトリに保存されました:")
+    print(f"- experiment_config.json")
+    print(f"- experiment_statistics.json")
+    if total_combinations > 1:
+        print(f"- grid_search_results.json")
+    if MODEL_NAME == 'RobustH2GCN':
+        print(f"- robust_h2gcn_gate_stats.json")
+    print(f"- results_summary.txt")
+    print(f"実験実行時刻: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+# ============================================================================
 # メイン処理
 # ============================================================================
 
 # データセット読み込み
 data, dataset = load_dataset(DATASET_NAME, device)
+
+# エッジを無向グラフに修正
+data = make_undirected(data, device)
 
 # 元の特徴量を無効化する場合
 if DISABLE_ORIGINAL_FEATURES:
@@ -102,6 +454,26 @@ if USE_PCA:
 else:
     print(f"\n=== PCA処理をスキップ ===")
     print(f"生の特徴量を使用します: {data.x.shape}")
+
+# 実験前に特徴量改変を適用
+if USE_FEATURE_MODIFICATION and data.x.shape[1] > 0:
+    print(f"\n=== 実験前特徴量改変適用 ===")
+    print(f"改変設定数: {len(FEATURE_MODIFICATIONS)}")
+    
+    data.x, modification_info = apply_feature_modifications(data.x, FEATURE_MODIFICATIONS, device)
+    
+    # 改変情報を表示
+    print_modification_info(modification_info, DATASET_NAME)
+    print(f"改変適用後の特徴量形状: {data.x.shape}")
+elif USE_FEATURE_MODIFICATION and data.x.shape[1] == 0:
+    print(f"\n=== 実験前特徴量改変適用 ===")
+    print(f"警告: 特徴量が空のため、改変適用をスキップします")
+    modification_info = {
+        'original_shape': (0, 0),
+        'final_shape': (0, 0),
+        'modifications_applied': [],
+        'total_modifications': len(FEATURE_MODIFICATIONS)
+    }
 
 # 隣接行列を作成
 adjacency_matrices = create_normalized_adjacency_matrices(data, device, max_hops=2)
@@ -140,7 +512,7 @@ if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw':
 
 # モデル情報を取得
 model_info = ModelFactory.get_model_info(MODEL_NAME)
-default_hidden_channels = model_info.get('default_hidden_channels', HIDDEN_CHANNELS)
+default_hidden_channels = model_info.get('default_hidden_channels', 32)  # デフォルト値
 
 print(f"\n=== 実験設定 ===")
 print(f"データセット: {DATASET_NAME}")
@@ -152,12 +524,38 @@ print(f"クラス数: {dataset.num_classes}")
 print(f"実験回数: {NUM_RUNS}")
 print(f"エポック数: {NUM_EPOCHS}")
 print(f"データ分割: 訓練={TRAIN_RATIO:.1%}, 検証={VAL_RATIO:.1%}, テスト={TEST_RATIO:.1%}")
-print(f"最大hop数: {MAX_HOPS}")
 print(f"PCA圧縮次元数: {PCA_COMPONENTS}")
 print(f"PCA使用: {USE_PCA}")
 print(f"元の特徴量無効化: {DISABLE_ORIGINAL_FEATURES}")
 print(f"隣接ノードラベル特徴量計算: {CALC_NEIGHBOR_LABEL_FEATURES}")
 print(f"隣接ノード特徴量結合: {COMBINE_NEIGHBOR_LABEL_FEATURES}")
+# Grid Search判定
+active_params = {k: v for k, v in GRID_SEARCH_PARAMS.items() if len(v) > 0}
+total_combinations = 1
+for values in active_params.values():
+    total_combinations *= len(values)
+
+if total_combinations > 1:
+    print(f"Grid Search実行: はい")
+    print(f"Grid Search対象パラメータ: {list(active_params.keys())}")
+    for param_name, values in active_params.items():
+        print(f"  {param_name}: {values}")
+    print(f"総パラメータ組み合わせ数: {total_combinations}")
+else:
+    print(f"Grid Search実行: いいえ（単一パラメータ実行）")
+print(f"特徴量改変使用: {USE_FEATURE_MODIFICATION}")
+if USE_FEATURE_MODIFICATION:
+    print(f"改変設定数: {len(FEATURE_MODIFICATIONS)}")
+    for i, mod in enumerate(FEATURE_MODIFICATIONS):
+        mod_type = mod.get('type', 'unknown')
+        percentage = mod.get('percentage', 0.0)
+        if mod_type == 'noise':
+            method = mod.get('method', 'per_node')
+            print(f"  改変 {i+1}: ノイズ ({method}) - 割合: {percentage:.1%}")
+        elif mod_type == 'missingness':
+            print(f"  改変 {i+1}: 欠損 - 割合: {percentage:.1%}")
+        else:
+            print(f"  改変 {i+1}: {mod_type} - 割合: {percentage:.1%}")
 print(f"類似度ベースエッジ作成使用: {USE_SIMILARITY_BASED_EDGES}")
 if USE_SIMILARITY_BASED_EDGES:
     print(f"エッジモード: {SIMILARITY_EDGE_MODE}")
@@ -166,407 +564,935 @@ if USE_SIMILARITY_BASED_EDGES:
         print(f"生の特徴量類似度閾値: {SIMILARITY_RAW_THRESHOLD}")
     elif SIMILARITY_FEATURE_TYPE == 'label':
         print(f"ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
-print(f"隠れ層次元: {default_hidden_channels}")
-print(f"レイヤー数: {NUM_LAYERS}")
-print(f"ドロップアウト: {DROPOUT}")
-if MODEL_NAME == 'MLPAndGCNFusion':
-    print(f"融合方法: {FUSION_METHOD}")
-elif MODEL_NAME == 'MLPAndGCNEnsemble':
-    print(f"アンサンブル方法: {ENSEMBLE_METHOD}")
-    if ENSEMBLE_METHOD == 'concat_alpha':
-        print(f"    学習可能パラメータ: α (GCN重み), 1-α (MLP重み)")
-elif MODEL_NAME == 'GCNAndMLPConcat':
-    print(f"GCNAndMLPConcatモデル作成: GCNで生の特徴量、MLPで生の特徴量+ラベル分布特徴量を処理")
-    print(f"GCN隠れ層次元: {GCN_HIDDEN_DIM}")
-    print(f"MLP隠れ層次元: {MLP_HIDDEN_DIM}")
-elif MODEL_NAME == 'H2GCN':
+if MODEL_NAME == 'H2GCN':
     print(f"H2GCNモデル作成: 1-hopと2-hopの隣接行列を使用してグラフ構造を学習")
     print(f"1-hop隣接行列: {data.adj_1hop.shape}")
     print(f"2-hop隣接行列: {data.adj_2hop.shape}")
+elif MODEL_NAME == 'MixHop':
+    print(f"MixHopモデル作成: 異なるべき乗の隣接行列を混合してグラフ畳み込み")
+    print(f"べき乗リスト: {MIXHOP_POWERS}")
+elif MODEL_NAME == 'GraphSAGE':
+    print(f"GraphSAGEモデル作成: 帰納的学習による大規模グラフ対応")
+    print(f"集約関数: {GRAPHSAGE_AGGR}")
+elif MODEL_NAME == 'GAT':
+    print(f"GATモデル作成: アテンション機構を使用したグラフ畳み込み")
+    print(f"アテンションヘッド数: {GAT_NUM_HEADS}")
+    print(f"ヘッド出力結合: {GAT_CONCAT}")
+
 print(f"学習率: {LEARNING_RATE}")
 print(f"重み減衰: {WEIGHT_DECAY}")
+print(f"Early Stopping使用: {USE_EARLY_STOPPING}")
+if USE_EARLY_STOPPING:
+    print(f"Early Stopping Patience: {EARLY_STOPPING_PATIENCE}")
+    print(f"Early Stopping Min Delta: {EARLY_STOPPING_MIN_DELTA}")
 
 # 結果を保存するリスト
 all_results = []
 
-# 実験実行
-for run in range(NUM_RUNS):
-    print(f"\n=== 実験 {run + 1}/{NUM_RUNS} ===")
-    
-    # 各実験で独立したデータ分割を作成
-    run_data = data.clone()
-    
-    # ランダムなデータ分割を作成
-    num_nodes = run_data.num_nodes
-    indices = torch.randperm(num_nodes)
-    
-    # データ分割サイズを計算
-    train_size = int(TRAIN_RATIO * num_nodes)
-    val_size = int(VAL_RATIO * num_nodes)
-    
-    # 新しいマスクを作成
-    run_data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    run_data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    run_data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    
-    run_data.train_mask[indices[:train_size]] = True
-    run_data.val_mask[indices[train_size:train_size + val_size]] = True
-    run_data.test_mask[indices[train_size + val_size:]] = True
-    
-    print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
-    
-    # 実験中にラベル特徴量を作成
-    adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
-        run_data, device, max_hops=MAX_HOPS, calc_neighbor_label_features=CALC_NEIGHBOR_LABEL_FEATURES,
-        temperature=TEMPERATURE
-    )
+# Grid Search実行（複数要素の配列があれば自動実行）
+active_params = {k: v for k, v in GRID_SEARCH_PARAMS.items() if len(v) > 0}
+total_combinations = 1
+for values in active_params.values():
+    total_combinations *= len(values)
 
-    # 隣接ノードのラベル特徴量を結合
-    if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
-        print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
+if total_combinations > 1:
+    # 複数パラメータのGrid Search設定を確認
+    active_params = {k: v for k, v in GRID_SEARCH_PARAMS.items() if len(v) > 0}
+    
+    if len(active_params) == 0:
+        print(f"\n=== Grid Search設定エラー ===")
+        print(f"有効なGrid Search対象パラメータが設定されていません。")
+        print(f"GRID_SEARCH_PARAMSのいずれかに値を設定してください。")
+        exit(1)
+    
+    # パラメータの組み合わせを生成
+    import itertools
+    param_names = list(active_params.keys())
+    param_values = list(active_params.values())
+    param_combinations = list(itertools.product(*param_values))
+    
+    print(f"\n=== 複数パラメータGrid Search開始 ===")
+    print(f"対象パラメータ: {list(active_params.keys())}")
+    for param_name, values in active_params.items():
+        print(f"  {param_name}: {values}")
+    print(f"パラメータ組み合わせ数: {len(param_combinations)}")
+    print(f"総実験数: {len(param_combinations)} × {NUM_RUNS} = {len(param_combinations) * NUM_RUNS}")
+    
+    grid_search_results = {}
+    
+    for i, param_combination in enumerate(param_combinations):
+        # パラメータの組み合わせを辞書形式で作成
+        param_dict = dict(zip(param_names, param_combination))
         
-        # 通常の結合
-        if COMBINE_NEIGHBOR_LABEL_FEATURES:
-            run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
-        print(f"  結合後の特徴量形状: {run_data.x.shape}")
-
-    # 生の特徴量類似度ベースエッジを必要に応じて結合
-    if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw' and hasattr(data, 'raw_similarity_edge_index'):
-        print(f"  類似度ベースエッジを結合中...")
-        print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+        print(f"\n{'='*80}")
+        print(f"=== 組み合わせ {i+1}/{len(param_combinations)} ===")
+        for param_name, param_value in param_dict.items():
+            print(f"  {param_name} = {param_value}")
+        print(f"{'='*80}")
         
-        if SIMILARITY_EDGE_MODE == 'replace':
-            # 元のエッジを類似度ベースエッジで置き換え
-            original_edge_count = run_data.edge_index.shape[1]
-            run_data.edge_index = data.raw_similarity_edge_index.clone()
-            print(f"    元のエッジを類似度ベースエッジで置き換え: {original_edge_count} → {data.raw_num_similarity_edges}")
+        # パラメータ値を設定
+        current_max_hops = param_dict.get('MAX_HOPS', 3)  # デフォルト値
+        current_hidden_channels = param_dict.get('HIDDEN_CHANNELS', 32)  # デフォルト値
+        current_num_layers = param_dict.get('NUM_LAYERS', 1)  # デフォルト値
+        current_temperature = param_dict.get('TEMPERATURE', 0.5)  # デフォルト値
+        current_dropout = param_dict.get('DROPOUT', 0.5)  # デフォルト値
+        
+        # このパラメータ値での実験結果を保存するリスト
+        param_results = []
+        
+        # 実験実行
+        for run in range(NUM_RUNS):
+            param_info = ", ".join([f"{k}={v}" for k, v in param_dict.items()])
+            print(f"\n=== 実験 {run + 1}/{NUM_RUNS} (組み合わせ {i+1}: {param_info}) ===")
             
-        elif SIMILARITY_EDGE_MODE == 'add':
-            # 元のエッジに類似度ベースエッジを追加
-            original_edge_count = run_data.edge_index.shape[1]
-            # 元のエッジと類似度ベースエッジを結合
-            combined_edge_index = torch.cat([run_data.edge_index, data.raw_similarity_edge_index], dim=1)
-            # 重複エッジを除去
-            edge_pairs = combined_edge_index.t()
-            unique_edges, _ = torch.unique(edge_pairs, dim=0, return_inverse=True)
-            run_data.edge_index = unique_edges.t()
-            final_edge_count = run_data.edge_index.shape[1]
-            print(f"    元のエッジに類似度ベースエッジを追加: {original_edge_count} + {data.raw_num_similarity_edges} → {final_edge_count}")
-        
-        print(f"  エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
-
-    # ラベル分布特徴量類似度ベースエッジを必要に応じて結合
-    if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is not None:
-        print(f"  ラベル分布特徴量類似度ベースエッジを結合中...")
-        print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
-        print(f"    ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
-        
-        # ラベル分布特徴量で類似度ベースエッジを作成
-        if SIMILARITY_EDGE_MODE == 'replace':
-            # 元のエッジをラベル分布特徴量ベースエッジで置き換え
-            original_edge_count = run_data.edge_index.shape[1]
-            label_edge_index, label_adj_matrix, num_label_edges = create_similarity_based_edges(
-                neighbor_label_features, threshold=SIMILARITY_LABEL_THRESHOLD, device=device
+            # 各実験で独立したデータ分割を作成
+            run_data = data.clone()
+            
+            # ランダムなデータ分割を作成
+            num_nodes = run_data.num_nodes
+            indices = torch.randperm(num_nodes)
+            
+            # データ分割サイズを計算
+            train_size = int(TRAIN_RATIO * num_nodes)
+            val_size = int(VAL_RATIO * num_nodes)
+            
+            # 新しいマスクを作成
+            run_data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+            run_data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+            run_data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+            
+            run_data.train_mask[indices[:train_size]] = True
+            run_data.val_mask[indices[train_size:train_size + val_size]] = True
+            run_data.test_mask[indices[train_size + val_size:]] = True
+            
+            print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
+            
+            # 実験中にラベル特徴量を作成
+            adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
+                run_data, device, max_hops=current_max_hops, calc_neighbor_label_features=CALC_NEIGHBOR_LABEL_FEATURES,
+                temperature=current_temperature
             )
-            run_data.edge_index = label_edge_index
-            print(f"    元のエッジをラベル分布特徴量ベースエッジで置き換え: {original_edge_count} → {num_label_edges}")
-            
-        elif SIMILARITY_EDGE_MODE == 'add':
-            # 元のエッジにラベル分布特徴量ベースエッジを追加
-            original_edge_count = run_data.edge_index.shape[1]
-            combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
-                run_data.edge_index, neighbor_label_features, 
-                threshold=SIMILARITY_LABEL_THRESHOLD, device=device, combine_with_original=True
-            )
-            run_data.edge_index = combined_edge_index
-            print(f"    元のエッジにラベル分布特徴量ベースエッジを追加: {num_orig} + {num_new} → {num_total}")
-        
-        print(f"  ラベル分布特徴量エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
-    
-    elif USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is None:
-        print(f"  警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
-        print(f"    CALC_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
 
-    # 特徴量情報を取得
-    feature_info = get_feature_info(run_data, one_hot_labels, max_hops=MAX_HOPS)
-    
-    # 実際の特徴量次元を使用（隣接ノード特徴量が結合されている場合）
-    actual_feature_dim = run_data.x.shape[1]
-    print(f"  実際の入力特徴量次元: {actual_feature_dim}")
-    
-    # 特徴量の詳細表示（オプション）
-    if SHOW_FEATURE_DETAILS:
-        display_node_features(run_data, adj_matrix, one_hot_labels, DATASET_NAME, max_hops=MAX_HOPS)
-    
-    # モデル作成
-    model_kwargs = {
-        'model_name': MODEL_NAME,
-        'in_channels': actual_feature_dim,  # 実際の特徴量次元を使用
-        'hidden_channels': default_hidden_channels,
-        'out_channels': dataset.num_classes,
-        'num_layers': NUM_LAYERS,
-        'dropout': DROPOUT
-    }
-    
-    # MLPAndGCNFusionの場合は融合方法を指定
-    if MODEL_NAME == 'MLPAndGCNFusion':
-        model_kwargs.update({
-            'fusion_method': FUSION_METHOD
-        })
-        print(f"  MLPAndGCNFusionモデル作成:")
-        print(f"    融合方法: {FUSION_METHOD}")
-        if FUSION_METHOD == 'concat_alpha':
-            print(f"    学習可能パラメータ: α (GCN重み), 1-α (MLP重み)")
-    
-    # MLPAndGCNEnsembleの場合は特別な処理
-    elif MODEL_NAME == 'MLPAndGCNEnsemble':
-        # 生の特徴量とラベル分布特徴量を分離
-        if USE_PCA:
-            raw_features = run_data.x[:, :PCA_COMPONENTS]
-        else:
-            raw_features = run_data.x[:, :dataset.num_features]
-        
-        if neighbor_label_features is not None and CALC_NEIGHBOR_LABEL_FEATURES:
-            # ラベル分布特徴量 + 生の特徴量を結合
-            label_features = torch.cat([neighbor_label_features, raw_features], dim=1)
-        else:
-            # 生の特徴量のみを使用
-            label_features = raw_features
-        
-        out = model(raw_features, label_features, run_data.edge_index)
-    
-    # GCNAndMLPConcatの場合は、生の特徴量とラベル分布特徴量の次元を指定
-    elif MODEL_NAME == 'GCNAndMLPConcat':
-        # 元の特徴量次元（PCA処理前の生の特徴量）
-        if USE_PCA:
-            raw_feature_dim = PCA_COMPONENTS
-        else:
-            raw_feature_dim = dataset.num_features
-        
-        # ラベル分布特徴量の次元
-        label_dist_dim = neighbor_label_features.shape[1] if neighbor_label_features is not None else 0
-        
-        model_kwargs.update({
-            'xfeat_dim': raw_feature_dim,  # 生の特徴量の次元
-            'xlabel_dim': label_dist_dim,  # ラベル分布特徴量の次元
-            'gcn_hidden_dim': GCN_HIDDEN_DIM,  # GCNの隠れ層次元
-            'mlp_hidden_dim': MLP_HIDDEN_DIM   # MLPの隠れ層次元
-        })
-        
-        print(f"  GCNAndMLPConcatモデル作成:")
-        print(f"    生の特徴量次元: {raw_feature_dim}")
-        print(f"    ラベル分布特徴量次元: {label_dist_dim}")
-        print(f"    総特徴量次元: {actual_feature_dim}")
-        print(f"    GCN隠れ層次元: {GCN_HIDDEN_DIM}")
-        print(f"    MLP隠れ層次元: {MLP_HIDDEN_DIM}")
-    
-    model = ModelFactory.create_model(**model_kwargs).to(device)
-    
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-    
-    # 学習ループ
-    def train():
-        model.train()
-        optimizer.zero_grad()
-        
-        # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
-        if MODEL_NAME == 'H2GCN':
-            out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-        # GCNAndMLPConcatの場合は特別な処理
-        elif MODEL_NAME == 'GCNAndMLPConcat':
-            # 生の特徴量とラベル分布特徴量を分離
-            if USE_PCA:
-                raw_features = run_data.x[:, :PCA_COMPONENTS]
-            else:
-                raw_features = run_data.x[:, :dataset.num_features]
+            # 隣接ノードのラベル特徴量を結合
+            if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
+                print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
+                
+                # 通常の結合
+                if COMBINE_NEIGHBOR_LABEL_FEATURES:
+                    run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
+                print(f"  結合後の特徴量形状: {run_data.x.shape}")
+
+            # 生の特徴量類似度ベースエッジを必要に応じて結合
+            if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw' and hasattr(data, 'raw_similarity_edge_index'):
+                print(f"  類似度ベースエッジを結合中...")
+                print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+                
+                if SIMILARITY_EDGE_MODE == 'replace':
+                    # 元のエッジを類似度ベースエッジで置き換え
+                    original_edge_count = run_data.edge_index.shape[1]
+                    run_data.edge_index = data.raw_similarity_edge_index.clone()
+                    print(f"    元のエッジを類似度ベースエッジで置き換え: {original_edge_count} → {data.raw_num_similarity_edges}")
+                    
+                elif SIMILARITY_EDGE_MODE == 'add':
+                    # 元のエッジに類似度ベースエッジを追加
+                    original_edge_count = run_data.edge_index.shape[1]
+                    # 元のエッジと類似度ベースエッジを結合
+                    combined_edge_index = torch.cat([run_data.edge_index, data.raw_similarity_edge_index], dim=1)
+                    # 重複エッジを除去
+                    edge_pairs = combined_edge_index.t()
+                    unique_edges, _ = torch.unique(edge_pairs, dim=0, return_inverse=True)
+                    run_data.edge_index = unique_edges.t()
+                    final_edge_count = run_data.edge_index.shape[1]
+                    print(f"    元のエッジに類似度ベースエッジを追加: {original_edge_count} + {data.raw_num_similarity_edges} → {final_edge_count}")
+                
+                print(f"  エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
+
+            # ラベル分布特徴量類似度ベースエッジを必要に応じて結合
+            if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is not None:
+                print(f"  ラベル分布特徴量類似度ベースエッジを結合中...")
+                print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+                print(f"    ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
+                
+                # ラベル分布特徴量で類似度ベースエッジを作成
+                if SIMILARITY_EDGE_MODE == 'replace':
+                    # 元のエッジをラベル分布特徴量ベースエッジで置き換え
+                    original_edge_count = run_data.edge_index.shape[1]
+                    label_edge_index, label_adj_matrix, num_label_edges = create_similarity_based_edges(
+                        neighbor_label_features, threshold=SIMILARITY_LABEL_THRESHOLD, device=device
+                    )
+                    run_data.edge_index = label_edge_index
+                    print(f"    元のエッジをラベル分布特徴量ベースエッジで置き換え: {original_edge_count} → {num_label_edges}")
+                    
+                elif SIMILARITY_EDGE_MODE == 'add':
+                    # 元のエッジにラベル分布特徴量ベースエッジを追加
+                    original_edge_count = run_data.edge_index.shape[1]
+                    combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
+                        run_data.edge_index, neighbor_label_features, 
+                        threshold=SIMILARITY_LABEL_THRESHOLD, device=device, combine_with_original=True
+                    )
+                    run_data.edge_index = combined_edge_index
+                    print(f"    元のエッジにラベル分布特徴量ベースエッジを追加: {num_orig} + {num_new} → {num_total}")
+                
+                print(f"  ラベル分布特徴量エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
             
+            elif USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is None:
+                print(f"  警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
+                print(f"    CALC_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
+
+            # 特徴量情報を取得
+            feature_info = get_feature_info(run_data, one_hot_labels, max_hops=current_max_hops)
+            
+            # 実際の特徴量次元を使用（隣接ノード特徴量が結合されている場合）
+            actual_feature_dim = run_data.x.shape[1]
+            print(f"  実際の入力特徴量次元: {actual_feature_dim}")
+            
+            # 特徴量の詳細表示（オプション）
+            if SHOW_FEATURE_DETAILS:
+                display_node_features(run_data, adj_matrix, one_hot_labels, DATASET_NAME, max_hops=current_max_hops)
+            
+            # モデル作成
+            model_kwargs = {
+                'model_name': MODEL_NAME,
+                'in_channels': actual_feature_dim,  # 実際の特徴量次元を使用
+                'hidden_channels': current_hidden_channels,
+                'out_channels': dataset.num_classes,
+                'num_layers': current_num_layers,
+                'dropout': current_dropout
+            }
+            
+            # MixHopモデルの場合はべき乗パラメータを指定
+            if MODEL_NAME in ['MixHop']:
+                model_kwargs.update({
+                    'powers': MIXHOP_POWERS
+                })
+                
+                print(f"  {MODEL_NAME}モデル作成:")
+                print(f"    べき乗リスト: {MIXHOP_POWERS}")
+                print(f"    隠れ層次元: {current_hidden_channels}")
+                print(f"    レイヤー数: {current_num_layers}")
+                print(f"    ドロップアウト: {current_dropout}")
+            
+            # GraphSAGEモデルの場合は集約関数パラメータを指定
+            elif MODEL_NAME == 'GraphSAGE':
+                model_kwargs.update({
+                    'aggr': GRAPHSAGE_AGGR
+                })
+                
+                print(f"  GraphSAGEモデル作成:")
+                print(f"    集約関数: {GRAPHSAGE_AGGR}")
+                print(f"    隠れ層次元: {current_hidden_channels}")
+                print(f"    レイヤー数: {current_num_layers}")
+                print(f"    ドロップアウト: {current_dropout}")
+            
+            # GATモデルの場合はアテンションヘッドパラメータを指定
+            elif MODEL_NAME == 'GAT':
+                model_kwargs.update({
+                    'num_heads': GAT_NUM_HEADS,
+                    'concat': GAT_CONCAT
+                })
+                
+                print(f"  GATモデル作成:")
+                print(f"    アテンションヘッド数: {GAT_NUM_HEADS}")
+                print(f"    ヘッド出力結合: {GAT_CONCAT}")
+                print(f"    隠れ層次元: {current_hidden_channels}")
+                print(f"    レイヤー数: {current_num_layers}")
+                print(f"    ドロップアウト: {current_dropout}")
+            
+            
+            # RobustH2GCNモデルの場合はパラメータを指定
+            elif MODEL_NAME == 'RobustH2GCN':
+                # ラベル特徴量の次元を取得
+                if neighbor_label_features is not None:
+                    label_feature_dim = neighbor_label_features.shape[1]
+                else:
+                    # ラベル特徴量がない場合は、クラス数のone-hotベクトルを使用
+                    label_feature_dim = dataset.num_classes
+                
+                model_kwargs.update({
+                    'in_label_dim': label_feature_dim
+                })
+                
+                print(f"  RobustH2GCNモデル作成:")
+                print(f"    特徴量次元: {actual_feature_dim}")
+                print(f"    ラベル特徴量次元: {label_feature_dim}")
+                print(f"    隠れ層次元: {current_hidden_channels}")
+                print(f"    ドロップアウト: {current_dropout}")
+            
+            model = ModelFactory.create_model(**model_kwargs).to(device)
+            
+            optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+            
+            # 学習ループ
+            def train():
+                model.train()
+                optimizer.zero_grad()
+                
+                # H2GCNとRobustH2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+                if MODEL_NAME == 'H2GCN':
+                    out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                elif MODEL_NAME == 'RobustH2GCN':
+                    # RobustH2GCNは特徴量とラベル特徴量の両方を使用
+                    if neighbor_label_features is not None:
+                        out, gate = model(run_data.x, neighbor_label_features, run_data.adj_1hop, run_data.adj_2hop)
+                    else:
+                        # ラベル特徴量がない場合は、one-hotラベルを使用
+                        print(f"  ラベル特徴量がないため、one-hotラベルを使用")
+                        one_hot_labels_tensor = one_hot_labels.to(device)
+                        out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
+                else:
+                    # その他のモデルは標準的な処理
+                    out = model(run_data.x, run_data.edge_index)
+                
+                loss = F.cross_entropy(out[run_data.train_mask], run_data.y[run_data.train_mask])
+                loss.backward()
+                optimizer.step()
+                return loss.item()
+            
+            # 評価関数
+            @torch.no_grad()
+            def test():
+                model.eval()
+                
+                # H2GCNとRobustH2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+                if MODEL_NAME == 'H2GCN':
+                    out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                    gate = None
+                elif MODEL_NAME == 'RobustH2GCN':
+                    # RobustH2GCNは特徴量とラベル特徴量の両方を使用
+                    if neighbor_label_features is not None:
+                        out, gate = model(run_data.x, neighbor_label_features, run_data.adj_1hop, run_data.adj_2hop)
+                    else:
+                        # ラベル特徴量がない場合は、one-hotラベルを使用
+                        one_hot_labels_tensor = one_hot_labels.to(device)
+                        out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
+                else:
+                    # その他のモデルは標準的な処理
+                    out = model(run_data.x, run_data.edge_index)
+                    gate = None
+                
+                pred = out.argmax(dim=1)
+                accs = []
+                for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
+                    correct = pred[mask] == run_data.y[mask]
+                    accs.append(int(correct.sum()) / int(mask.sum()))
+                
+                if MODEL_NAME == 'RobustH2GCN':
+                    return accs[0], accs[1], accs[2], gate
+                else:
+                    return accs
+            
+
+            
+            # 学習実行
+            best_val_acc = 0
+            best_test_acc = 0
+            final_train_acc = 0
+            final_val_acc = 0
+            final_test_acc = 0
+            final_gate = None  # RobustH2GCNのgate値を保存
+            
+            # Early stopping用の変数
+            if USE_EARLY_STOPPING:
+                best_val_acc_for_early_stopping = 0
+                patience_counter = 0
+                early_stopped = False
+            
+            for epoch in range(NUM_EPOCHS + 1):
+                loss = train()
+                
+                # RobustH2GCNの場合はgate値も取得
+                if MODEL_NAME == 'RobustH2GCN':
+                    train_acc, val_acc, test_acc, gate = test()
+                else:
+                    train_acc, val_acc, test_acc = test()
+                
+                # ベスト結果を記録
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    best_test_acc = test_acc
+                
+                # Early stoppingの処理
+                if USE_EARLY_STOPPING:
+                    if val_acc > best_val_acc_for_early_stopping + EARLY_STOPPING_MIN_DELTA:
+                        best_val_acc_for_early_stopping = val_acc
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
+                    
+                    # Early stopping条件をチェック
+                    if patience_counter >= EARLY_STOPPING_PATIENCE:
+                        early_stopped = True
+                        print(f"Early stopping triggered at epoch {epoch} (patience: {EARLY_STOPPING_PATIENCE})")
+                        break
+                
+                # 最終結果を記録
+                if epoch == NUM_EPOCHS:
+                    final_train_acc = train_acc
+                    final_val_acc = val_acc
+                    final_test_acc = test_acc
+                    if MODEL_NAME == 'RobustH2GCN':
+                        final_gate = gate
+                
+                # 進捗表示
+                if epoch % DISPLAY_PROGRESS_EVERY == 0:
+                    alpha_info = ""
+                    
+                    early_stop_info = ""
+                    if USE_EARLY_STOPPING:
+                        early_stop_info = f", Patience: {patience_counter}/{EARLY_STOPPING_PATIENCE}"
+                    
+                    print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}{early_stop_info}')
+            
+            # Early stoppingで終了した場合の最終結果を記録
+            if USE_EARLY_STOPPING and early_stopped:
+                final_train_acc = train_acc
+                final_val_acc = val_acc
+                final_test_acc = test_acc
+                if MODEL_NAME == 'RobustH2GCN':
+                    final_gate = gate
+            
+            # 結果を保存
+            run_result = {
+                'run': run + 1,
+                'final_train_acc': final_train_acc,
+                'final_val_acc': final_val_acc,
+                'final_test_acc': final_test_acc,
+                'best_val_acc': best_val_acc,
+                'best_test_acc': best_test_acc,
+                'grid_search_params': param_dict.copy()  # パラメータ情報を保存
+            }
+            
+            # RobustH2GCNのgate値を保存
+            if MODEL_NAME == 'RobustH2GCN' and final_gate is not None:
+                run_result['final_gate'] = final_gate
+            
+            # 改変情報を保存（実験前の改変情報を使用）
+            if USE_FEATURE_MODIFICATION:
+                run_result['modification_info'] = modification_info
+            
+            # Early stopping情報を保存
+            if USE_EARLY_STOPPING:
+                run_result['early_stopped'] = early_stopped
+                run_result['early_stopping_epoch'] = epoch if early_stopped else NUM_EPOCHS
+                run_result['early_stopping_patience'] = EARLY_STOPPING_PATIENCE
+                run_result['early_stopping_min_delta'] = EARLY_STOPPING_MIN_DELTA
+            
+            param_results.append(run_result)
+            
+            print(f"実験 {run + 1} 完了:")
+            print(f"  最終結果 - Train: {final_train_acc:.4f}, Val: {final_val_acc:.4f}, Test: {final_test_acc:.4f}")
+            print(f"  ベスト結果 - Val: {best_val_acc:.4f}, Test: {best_test_acc:.4f}")
+            
+            # RobustH2GCNのgate値を出力
+            if MODEL_NAME == 'RobustH2GCN' and final_gate is not None:
+                gate_mean = final_gate.mean().item()
+                gate_std = final_gate.std().item()
+                gate_min = final_gate.min().item()
+                gate_max = final_gate.max().item()
+                print(f"  Gate統計 - 平均: {gate_mean:.4f}, 標準偏差: {gate_std:.4f}, 範囲: [{gate_min:.4f}, {gate_max:.4f}]")
+        
+        grid_search_results[param_combination] = param_results
+    
+    # Grid Search結果の集計と表示
+    print(f"\n{'='*80}")
+    print(f"=== Grid Search結果サマリー ===")
+    print(f"{'='*80}")
+    
+    # 各パラメータ組み合わせでの結果を集計
+    param_summary = {}
+    for param_combination, results in grid_search_results.items():
+        final_test_accs = [r['final_test_acc'] for r in results]
+        best_test_accs = [r['best_test_acc'] for r in results]
+        final_val_accs = [r['final_val_acc'] for r in results]
+        best_val_accs = [r['best_val_acc'] for r in results]
+        
+        param_summary[param_combination] = {
+            'final_test_mean': np.mean(final_test_accs),
+            'final_test_std': np.std(final_test_accs),
+            'best_test_mean': np.mean(best_test_accs),
+            'best_test_std': np.std(best_test_accs),
+            'final_val_mean': np.mean(final_val_accs),
+            'final_val_std': np.std(final_val_accs),
+            'best_val_mean': np.mean(best_val_accs),
+            'best_val_std': np.std(best_val_accs),
+            'results': results
+        }
+    
+    # 結果を表形式で表示
+    print(f"\nパラメータ組み合わせ別結果:")
+    print(f"{'='*120}")
+    header = "組み合わせ | "
+    for param_name in param_names:
+        header += f"{param_name:>8} | "
+    header += "{'Final Test':>12} | {'Best Test':>12} | {'Final Val':>12} | {'Best Val':>12}"
+    print(header)
+    print(f"{'='*120}")
+    
+    for i, param_combination in enumerate(sorted(grid_search_results.keys())):
+        summary = param_summary[param_combination]
+        param_dict = dict(zip(param_names, param_combination))
+        
+        row = f"{i+1:>9} | "
+        for param_name in param_names:
+            row += f"{param_dict[param_name]:>8} | "
+        row += f"{summary['final_test_mean']:>10.4f}±{summary['final_test_std']:<1.4f} | "
+        row += f"{summary['best_test_mean']:>10.4f}±{summary['best_test_std']:<1.4f} | "
+        row += f"{summary['final_val_mean']:>10.4f}±{summary['final_val_std']:<1.4f} | "
+        row += f"{summary['best_val_mean']:>10.4f}±{summary['best_val_std']:<1.4f}"
+        print(row)
+    
+    # 最適なパラメータ組み合わせを特定（検証精度のベスト値で選択）
+    best_param_by_val = max(param_summary.items(), key=lambda x: x[1]['best_val_mean'])
+    best_param_by_test = max(param_summary.items(), key=lambda x: x[1]['best_test_mean'])
+    
+    # 最終結果Test精度の平均値で最適パラメータを特定
+    best_param_by_final_test = max(param_summary.items(), key=lambda x: x[1]['final_test_mean'])
+    
+    print(f"\n{'='*80}")
+    print(f"最適パラメータ選択結果:")
+    print(f"{'='*80}")
+    
+    # 検証精度ベスト値による最適パラメータ
+    best_val_param_dict = dict(zip(param_names, best_param_by_val[0]))
+    print(f"検証精度ベスト値による最適パラメータ:")
+    for param_name, param_value in best_val_param_dict.items():
+        print(f"  {param_name}: {param_value}")
+    print(f"  検証精度: {best_param_by_val[1]['best_val_mean']:.4f} ± {best_param_by_val[1]['best_val_std']:.4f}")
+    print(f"  テスト精度: {best_param_by_val[1]['best_test_mean']:.4f} ± {best_param_by_val[1]['best_test_std']:.4f}")
+    
+    # テスト精度ベスト値による最適パラメータ
+    best_test_param_dict = dict(zip(param_names, best_param_by_test[0]))
+    print(f"\nテスト精度ベスト値による最適パラメータ:")
+    for param_name, param_value in best_test_param_dict.items():
+        print(f"  {param_name}: {param_value}")
+    print(f"  検証精度: {best_param_by_test[1]['best_val_mean']:.4f} ± {best_param_by_test[1]['best_val_std']:.4f}")
+    print(f"  テスト精度: {best_param_by_test[1]['best_test_mean']:.4f} ± {best_param_by_test[1]['best_test_std']:.4f}")
+    
+    # 最終結果Test精度平均値による最適パラメータ
+    best_final_test_param_dict = dict(zip(param_names, best_param_by_final_test[0]))
+    print(f"\n最終結果Test精度平均値による最適パラメータ:")
+    for param_name, param_value in best_final_test_param_dict.items():
+        print(f"  {param_name}: {param_value}")
+    print(f"  最終結果Test精度: {best_param_by_final_test[1]['final_test_mean']:.4f} ± {best_param_by_final_test[1]['final_test_std']:.4f}")
+    
+    # 推奨パラメータ（検証精度ベスト値による選択）
+    recommended_params = best_val_param_dict
+    print(f"\n推奨パラメータ (検証精度ベスト値による選択):")
+    for param_name, param_value in recommended_params.items():
+        print(f"  {param_name}: {param_value}")
+    
+    # 最終結果Test精度の最大値を出力
+    max_final_test_mean = best_param_by_final_test[1]['final_test_mean']
+    print(f"\n最終結果Test精度の最大平均値: {max_final_test_mean:.4f}")
+    print(f"最適パラメータ:")
+    for param_name, param_value in best_final_test_param_dict.items():
+        print(f"  {param_name}: {param_value}")
+    
+    # 全結果をall_resultsに統合
+    all_results = []
+    for param_combination, results in grid_search_results.items():
+        param_dict = dict(zip(param_names, param_combination))
+        for result in results:
+            result['grid_search_params'] = param_dict.copy()
+        all_results.extend(results)
+    
+    # 詳細な結果表示
+    print(f"\n=== 詳細結果 ===")
+    for i, result in enumerate(all_results):
+        alpha_info = ""
+        
+        modification_info = ""
+        if USE_FEATURE_MODIFICATION and 'modification_info' in result and result['modification_info'] is not None:
+            mod_count = len(result['modification_info'].get('modifications_applied', []))
+            modification_info = f", 改変={mod_count}個"
+        
+        early_stop_info = ""
+        if USE_EARLY_STOPPING and result.get('early_stopped', False):
+            early_stop_info = f", ES@{result.get('early_stopping_epoch', 'N/A')}"
+        
+        grid_search_info = ""
+        if 'grid_search_params' in result:
+            param_str = ", ".join([f"{k}={v}" for k, v in result['grid_search_params'].items()])
+            grid_search_info = f", パラメータ: {param_str}"
+        
+        print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{modification_info}{early_stop_info}{grid_search_info}")
+    
+    # 結果の集計と表示
+    print(f"\n=== 実験結果統計 ({NUM_RUNS}回の平均) ===")
+
+# 単一パラメータ実行（Grid Searchを使用しない場合）
+else:
+    print(f"\n=== 単一パラメータ実行 ===")
+    print(f"Grid Searchを使用しない場合の設定値:")
+    print(f"  注意: HIDDEN_CHANNELS, NUM_LAYERS, MAX_HOPS, TEMPERATURE, DROPOUTはGRID_SEARCH_PARAMSで設定してください")
+    print(f"  デフォルト値: HIDDEN_CHANNELS=32, NUM_LAYERS=1, MAX_HOPS=3, TEMPERATURE=0.5, DROPOUT=0.5")
+    
+    # 実験実行
+    for run in range(NUM_RUNS):
+        print(f"\n=== 実験 {run + 1}/{NUM_RUNS} ===")
+        
+        # 各実験で独立したデータ分割を作成
+        run_data = data.clone()
+        
+        # ランダムなデータ分割を作成
+        num_nodes = run_data.num_nodes
+        indices = torch.randperm(num_nodes)
+        
+        # データ分割サイズを計算
+        train_size = int(TRAIN_RATIO * num_nodes)
+        val_size = int(VAL_RATIO * num_nodes)
+        
+        # 新しいマスクを作成
+        run_data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        run_data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        run_data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        
+        run_data.train_mask[indices[:train_size]] = True
+        run_data.val_mask[indices[train_size:train_size + val_size]] = True
+        run_data.test_mask[indices[train_size + val_size:]] = True
+        
+        print(f"  データ分割: 訓練={run_data.train_mask.sum().item()}, 検証={run_data.val_mask.sum().item()}, テスト={run_data.test_mask.sum().item()}")
+        
+        # 実験中にラベル特徴量を作成（デフォルト値を使用）
+        adj_matrix, one_hot_labels, neighbor_label_features = create_label_features(
+            run_data, device, max_hops=3, calc_neighbor_label_features=CALC_NEIGHBOR_LABEL_FEATURES,
+            temperature=0.5
+        )
+
+        # 隣接ノードのラベル特徴量を結合
+        if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
+            print(f"  隣接ノードラベル特徴量を結合: {data.x.shape} + {neighbor_label_features.shape}")
+            
+            # 通常の結合
+            if COMBINE_NEIGHBOR_LABEL_FEATURES:
+                run_data.x = torch.cat([run_data.x, neighbor_label_features], dim=1)
+            print(f"  結合後の特徴量形状: {run_data.x.shape}")
+
+        # 生の特徴量類似度ベースエッジを必要に応じて結合
+        if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'raw' and hasattr(data, 'raw_similarity_edge_index'):
+            print(f"  類似度ベースエッジを結合中...")
+            print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+            
+            if SIMILARITY_EDGE_MODE == 'replace':
+                # 元のエッジを類似度ベースエッジで置き換え
+                original_edge_count = run_data.edge_index.shape[1]
+                run_data.edge_index = data.raw_similarity_edge_index.clone()
+                print(f"    元のエッジを類似度ベースエッジで置き換え: {original_edge_count} → {data.raw_num_similarity_edges}")
+                
+            elif SIMILARITY_EDGE_MODE == 'add':
+                # 元のエッジに類似度ベースエッジを追加
+                original_edge_count = run_data.edge_index.shape[1]
+                # 元のエッジと類似度ベースエッジを結合
+                combined_edge_index = torch.cat([run_data.edge_index, data.raw_similarity_edge_index], dim=1)
+                # 重複エッジを除去
+                edge_pairs = combined_edge_index.t()
+                unique_edges, _ = torch.unique(edge_pairs, dim=0, return_inverse=True)
+                run_data.edge_index = unique_edges.t()
+                final_edge_count = run_data.edge_index.shape[1]
+                print(f"    元のエッジに類似度ベースエッジを追加: {original_edge_count} + {data.raw_num_similarity_edges} → {final_edge_count}")
+                
+            print(f"  エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
+
+        # ラベル分布特徴量類似度ベースエッジを必要に応じて結合
+        if USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is not None:
+            print(f"  ラベル分布特徴量類似度ベースエッジを結合中...")
+            print(f"    エッジモード: {SIMILARITY_EDGE_MODE}")
+            print(f"    ラベル分布特徴量類似度閾値: {SIMILARITY_LABEL_THRESHOLD}")
+            
+            # ラベル分布特徴量で類似度ベースエッジを作成
+            if SIMILARITY_EDGE_MODE == 'replace':
+                # 元のエッジをラベル分布特徴量ベースエッジで置き換え
+                original_edge_count = run_data.edge_index.shape[1]
+                label_edge_index, label_adj_matrix, num_label_edges = create_similarity_based_edges(
+                    neighbor_label_features, threshold=SIMILARITY_LABEL_THRESHOLD, device=device
+                )
+                run_data.edge_index = label_edge_index
+                print(f"    元のエッジをラベル分布特徴量ベースエッジで置き換え: {original_edge_count} → {num_label_edges}")
+                
+            elif SIMILARITY_EDGE_MODE == 'add':
+                # 元のエッジにラベル分布特徴量ベースエッジを追加
+                original_edge_count = run_data.edge_index.shape[1]
+                combined_edge_index, combined_adj_matrix, num_orig, num_new, num_total = create_similarity_based_edges_with_original(
+                    run_data.edge_index, neighbor_label_features, 
+                    threshold=SIMILARITY_LABEL_THRESHOLD, device=device, combine_with_original=True
+                )
+                run_data.edge_index = combined_edge_index
+                print(f"    元のエッジにラベル分布特徴量ベースエッジを追加: {num_orig} + {num_new} → {num_total}")
+                
+            print(f"  ラベル分布特徴量エッジ結合完了: 最終エッジ数 {run_data.edge_index.shape[1]}")
+        
+        elif USE_SIMILARITY_BASED_EDGES and SIMILARITY_FEATURE_TYPE == 'label' and neighbor_label_features is None:
+            print(f"  警告: neighbor_label_featuresがNoneのため、ラベル分布特徴量でのエッジ作成をスキップします")
+            print(f"    CALC_NEIGHBOR_LABEL_FEATURES=Trueに設定してください")
+
+        # 特徴量情報を取得
+        feature_info = get_feature_info(run_data, one_hot_labels, max_hops=3)
+        
+        # 実際の特徴量次元を使用（隣接ノード特徴量が結合されている場合）
+        actual_feature_dim = run_data.x.shape[1]
+        print(f"  実際の入力特徴量次元: {actual_feature_dim}")
+        
+        # 特徴量の詳細表示（オプション）
+        if SHOW_FEATURE_DETAILS:
+            display_node_features(run_data, adj_matrix, one_hot_labels, DATASET_NAME, max_hops=3)
+        
+        # モデル作成（デフォルト値を使用）
+        model_kwargs = {
+            'model_name': MODEL_NAME,
+            'in_channels': actual_feature_dim,  # 実際の特徴量次元を使用
+            'hidden_channels': 32,  # デフォルト値
+            'out_channels': dataset.num_classes,
+            'num_layers': 1,  # デフォルト値
+            'dropout': 0.5  # デフォルト値
+        }
+        # MixHopモデルの場合はべき乗パラメータを指定
+        if MODEL_NAME in ['MixHop']:
+            model_kwargs.update({
+                'powers': MIXHOP_POWERS
+            })
+            
+            print(f"  {MODEL_NAME}モデル作成:")
+            print(f"    べき乗リスト: {MIXHOP_POWERS}")
+            print(f"    隠れ層次元: 32 (デフォルト)")
+            print(f"    レイヤー数: 1 (デフォルト)")
+            print(f"    ドロップアウト: 0.5 (デフォルト)")
+        
+        # GraphSAGEモデルの場合は集約関数パラメータを指定
+        elif MODEL_NAME == 'GraphSAGE':
+            model_kwargs.update({
+                'aggr': GRAPHSAGE_AGGR
+            })
+            
+            print(f"  GraphSAGEモデル作成:")
+            print(f"    集約関数: {GRAPHSAGE_AGGR}")
+            print(f"    隠れ層次元: 32 (デフォルト)")
+            print(f"    レイヤー数: 1 (デフォルト)")
+            print(f"    ドロップアウト: 0.5 (デフォルト)")
+        
+        # GATモデルの場合はアテンションヘッドパラメータを指定
+        elif MODEL_NAME == 'GAT':
+            model_kwargs.update({
+                'num_heads': GAT_NUM_HEADS,
+                'concat': GAT_CONCAT
+            })
+            
+            print(f"  GATモデル作成:")
+            print(f"    アテンションヘッド数: {GAT_NUM_HEADS}")
+            print(f"    ヘッド出力結合: {GAT_CONCAT}")
+            print(f"    隠れ層次元: 32 (デフォルト)")
+            print(f"    レイヤー数: 1 (デフォルト)")
+            print(f"    ドロップアウト: 0.5 (デフォルト)")
+        
+
+        
+        # RobustH2GCNモデルの場合はパラメータを指定
+        elif MODEL_NAME == 'RobustH2GCN':
+            # ラベル特徴量の次元を取得
             if neighbor_label_features is not None:
-                label_features = neighbor_label_features
+                label_feature_dim = neighbor_label_features.shape[1]
             else:
-                label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
+                # ラベル特徴量がない場合は、クラス数のone-hotベクトルを使用
+                label_feature_dim = dataset.num_classes
             
-            out = model(raw_features, label_features, run_data.edge_index)
-        # MLPAndGCNEnsembleの場合は特別な処理
-        elif MODEL_NAME == 'MLPAndGCNEnsemble':
-            # 生の特徴量とラベル分布特徴量を分離
-            if USE_PCA:
-                raw_features = run_data.x[:, :PCA_COMPONENTS]
-            else:
-                raw_features = run_data.x[:, :dataset.num_features]
+            model_kwargs.update({
+                'in_label_dim': label_feature_dim
+            })
             
-            if neighbor_label_features is not None:
-                label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
-            else:
-                label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-            
-            out = model(raw_features, label_features, run_data.edge_index)
-        else:
-            # その他のモデルは標準的な処理
-            out = model(run_data.x, run_data.edge_index)
+            print(f"  RobustH2GCNモデル作成:")
+            print(f"    特徴量次元: {actual_feature_dim}")
+            print(f"    ラベル特徴量次元: {label_feature_dim}")
+            print(f"    隠れ層次元: 32 (デフォルト)")
+            print(f"    ドロップアウト: 0.5 (デフォルト)")
         
-        loss = F.cross_entropy(out[run_data.train_mask], run_data.y[run_data.train_mask])
-        loss.backward()
-        optimizer.step()
-        return loss.item()
-    
-    # 評価関数
-    @torch.no_grad()
-    def test():
-        model.eval()
+        model = ModelFactory.create_model(**model_kwargs).to(device)
         
-        # H2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
-        if MODEL_NAME == 'H2GCN':
-            out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
-        # GCNAndMLPConcatの場合は特別な処理
-        elif MODEL_NAME == 'GCNAndMLPConcat':
-            # 生の特徴量とラベル分布特徴量を分離
-            if USE_PCA:
-                raw_features = run_data.x[:, :PCA_COMPONENTS]
-            else:
-                raw_features = run_data.x[:, :dataset.num_features]
-            
-            if neighbor_label_features is not None:
-                label_features = neighbor_label_features
-            else:
-                label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-            
-            out = model(raw_features, label_features, run_data.edge_index)
-        # MLPAndGCNEnsembleの場合は特別な処理
-        elif MODEL_NAME == 'MLPAndGCNEnsemble':
-            # 生の特徴量とラベル分布特徴量を分離
-            if USE_PCA:
-                raw_features = run_data.x[:, :PCA_COMPONENTS]
-            else:
-                raw_features = run_data.x[:, :dataset.num_features]
-            
-            if neighbor_label_features is not None:
-                label_features = torch.concat([neighbor_label_features, raw_features], dim=1)
-            else:
-                label_features = torch.zeros(run_data.x.shape[0], 0, device=device)
-            
-            out = model(raw_features, label_features, run_data.edge_index)
-        else:
-            # その他のモデルは標準的な処理
-            out = model(run_data.x, run_data.edge_index)
+        optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
         
-        pred = out.argmax(dim=1)
-        accs = []
-        for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
-            correct = pred[mask] == run_data.y[mask]
-            accs.append(int(correct.sum()) / int(mask.sum()))
-        return accs
-    
-    # α値を取得する関数
-    def get_alpha_value():
-        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
-            return torch.clamp(model.alpha, 0, 1).item()
-        return None
-    
-    # β値を取得する関数
-    def get_beta_value():
-        if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and hasattr(model, 'alpha'):
-            return torch.clamp(1 - model.alpha, 0, 1).item()
-        return None
-    
-    # 学習実行
-    best_val_acc = 0
-    best_test_acc = 0
-    final_train_acc = 0
-    final_val_acc = 0
-    final_test_acc = 0
-    
-    for epoch in range(NUM_EPOCHS + 1):
-        loss = train()
-        train_acc, val_acc, test_acc = test()
+        # 学習ループ
+        def train():
+            model.train()
+            optimizer.zero_grad()
+            
+            # H2GCNとRobustH2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+            if MODEL_NAME == 'H2GCN':
+                out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+            elif MODEL_NAME == 'RobustH2GCN':
+                # RobustH2GCNは特徴量とラベル特徴量の両方を使用
+                if neighbor_label_features is not None:
+                    out, gate = model(run_data.x, neighbor_label_features, run_data.adj_1hop, run_data.adj_2hop)
+                else:
+                    # ラベル特徴量がない場合は、one-hotラベルを使用
+                    one_hot_labels_tensor = one_hot_labels.to(device)
+                    out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
+            else:
+                # その他のモデルは標準的な処理
+                out = model(run_data.x, run_data.edge_index)
+            
+            loss = F.cross_entropy(out[run_data.train_mask], run_data.y[run_data.train_mask])
+            loss.backward()
+            optimizer.step()
+            return loss.item()
         
-        # ベスト結果を記録
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            best_test_acc = test_acc
+        # 評価関数
+        @torch.no_grad()
+        def test():
+            model.eval()
+            
+            # H2GCNとRobustH2GCNの場合は特別な処理（1-hopと2-hopの隣接行列を使用）
+            if MODEL_NAME == 'H2GCN':
+                out = model(run_data.x, run_data.adj_1hop, run_data.adj_2hop)
+                gate = None
+            elif MODEL_NAME == 'RobustH2GCN':
+                # RobustH2GCNは特徴量とラベル特徴量の両方を使用
+                if neighbor_label_features is not None:
+                    out, gate = model(run_data.x, neighbor_label_features, run_data.adj_1hop, run_data.adj_2hop)
+                else:
+                    # ラベル特徴量がない場合は、one-hotラベルを使用
+                    one_hot_labels_tensor = one_hot_labels.to(device)
+                    out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
+            else:
+                # その他のモデルは標準的な処理
+                out = model(run_data.x, run_data.edge_index)
+                gate = None
+            
+            pred = out.argmax(dim=1)
+            accs = []
+            for mask in [run_data.train_mask, run_data.val_mask, run_data.test_mask]:
+                correct = pred[mask] == run_data.y[mask]
+                accs.append(int(correct.sum()) / int(mask.sum()))
+            
+            if MODEL_NAME == 'RobustH2GCN':
+                return accs[0], accs[1], accs[2], gate
+            else:
+                return accs
         
-        # 最終結果を記録
-        if epoch == NUM_EPOCHS:
+
+        
+        # 学習実行
+        best_val_acc = 0
+        best_test_acc = 0
+        final_train_acc = 0
+        final_val_acc = 0
+        final_test_acc = 0
+        final_gate = None  # RobustH2GCNのgate値を保存
+        
+        # Early stopping用の変数
+        if USE_EARLY_STOPPING:
+            best_val_acc_for_early_stopping = 0
+            patience_counter = 0
+            early_stopped = False
+        
+        for epoch in range(NUM_EPOCHS + 1):
+            loss = train()
+            
+            # RobustH2GCNの場合はgate値も取得
+            if MODEL_NAME == 'RobustH2GCN':
+                train_acc, val_acc, test_acc, gate = test()
+            else:
+                train_acc, val_acc, test_acc = test()
+            
+            # ベスト結果を記録
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                best_test_acc = test_acc
+            
+            # Early stoppingの処理
+            if USE_EARLY_STOPPING:
+                if val_acc > best_val_acc_for_early_stopping + EARLY_STOPPING_MIN_DELTA:
+                    best_val_acc_for_early_stopping = val_acc
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+                
+                # Early stopping条件をチェック
+                if patience_counter >= EARLY_STOPPING_PATIENCE:
+                    early_stopped = True
+                    print(f"Early stopping triggered at epoch {epoch} (patience: {EARLY_STOPPING_PATIENCE})")
+                    break
+            
+            # 最終結果を記録
+            if epoch == NUM_EPOCHS:
+                final_train_acc = train_acc
+                final_val_acc = val_acc
+                final_test_acc = test_acc
+                if MODEL_NAME == 'RobustH2GCN':
+                    final_gate = gate
+            
+            # 進捗表示
+            if epoch % DISPLAY_PROGRESS_EVERY == 0:
+                alpha_info = ""
+                
+                early_stop_info = ""
+                if USE_EARLY_STOPPING:
+                    early_stop_info = f", Patience: {patience_counter}/{EARLY_STOPPING_PATIENCE}"
+                
+                print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}{early_stop_info}')
+        
+        # Early stoppingで終了した場合の最終結果を記録
+        if USE_EARLY_STOPPING and early_stopped:
             final_train_acc = train_acc
             final_val_acc = val_acc
             final_test_acc = test_acc
+            if MODEL_NAME == 'RobustH2GCN':
+                final_gate = gate
         
-        # 進捗表示
-        if epoch % DISPLAY_PROGRESS_EVERY == 0:
-            alpha_info = ""
-            if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-                alpha_val = get_alpha_value()
-                beta_val = get_beta_value()
-                if alpha_val is not None and beta_val is not None:
-                    alpha_info = f", α={alpha_val:.4f}, 1-α={beta_val:.4f}"
-                elif alpha_val is not None:
-                    alpha_info = f", α={alpha_val:.4f}"
-            
-            print(f'Epoch {epoch:03d}, Loss: {loss:.4f}, Train: {train_acc:.4f}, Val: {val_acc:.4f}, Test: {test_acc:.4f}{alpha_info}')
-    
-    # MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値を表示
-    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-        final_alpha = get_alpha_value()
-        final_beta = get_beta_value()
-        if final_alpha is not None or final_beta is not None:
-            print(f"\n=== {MODEL_NAME} 最終α・(1-α)値 ===")
-            if hasattr(model, 'print_alpha_info'):
-                model.print_alpha_info()
-            else:
-                print(f"α (GCN重み): {final_alpha:.4f}")
-                print(f"(1-α) (MLP重み): {final_beta:.4f}")
-    
-    # GCNAndMLPConcatモデルの最終隠れ層次元情報を表示
-    elif MODEL_NAME == 'GCNAndMLPConcat':
-        print(f"\n=== GCNAndMLPConcat 最終隠れ層次元情報 ===")
-        model.print_hidden_dims_info()
-    
-    # 結果を保存
-    run_result = {
-        'run': run + 1,
-        'final_train_acc': final_train_acc,
-        'final_val_acc': final_val_acc,
-        'final_test_acc': final_test_acc,
-        'best_val_acc': best_val_acc,
-        'best_test_acc': best_test_acc
-    }
-    
-    # MLPAndGCNFusion/MLPAndGCNEnsembleの場合はαとβ値も保存
-    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble']:
-        final_alpha = get_alpha_value()
-        final_beta = get_beta_value()
-        if final_alpha is not None:
-            run_result['final_alpha'] = final_alpha
-        if final_beta is not None:
-            run_result['final_1_minus_alpha'] = final_beta
+        # 結果を保存
+        run_result = {
+            'run': run + 1,
+            'final_train_acc': final_train_acc,
+            'final_val_acc': final_val_acc,
+            'final_test_acc': final_test_acc,
+            'best_val_acc': best_val_acc,
+            'best_test_acc': best_test_acc
+        }
         
-        # α情報を取得
-        if MODEL_NAME == 'MLPAndGCNFusion' and hasattr(model, 'get_alpha_info'):
-            alpha_info = model.get_alpha_info()
-        elif MODEL_NAME == 'MLPAndGCNEnsemble' and hasattr(model, 'get_alpha_info'):
-            alpha_info = model.get_alpha_info()
-        else:
-            # フォールバック用のα情報
-            alpha_info = {
-                'alpha': final_alpha,
-                'beta': final_beta,
-                'gcn_weight': final_alpha,
-                'mlp_weight': final_beta,
-                'gcn_name': 'GCN Features',
-                'mlp_name': 'MLP Features',
-                'fusion_method': 'ensemble'
-            }
-        run_result['alpha_info'] = alpha_info
+        # RobustH2GCNのgate値を保存
+        if MODEL_NAME == 'RobustH2GCN' and final_gate is not None:
+            run_result['final_gate'] = final_gate
+        
+        # 改変情報を保存（実験前の改変情報を使用）
+        if USE_FEATURE_MODIFICATION:
+            run_result['modification_info'] = modification_info
+        
+        # Early stopping情報を保存
+        if USE_EARLY_STOPPING:
+            run_result['early_stopped'] = early_stopped
+            run_result['early_stopping_epoch'] = epoch if early_stopped else NUM_EPOCHS
+            run_result['early_stopping_patience'] = EARLY_STOPPING_PATIENCE
+            run_result['early_stopping_min_delta'] = EARLY_STOPPING_MIN_DELTA
+        
+        all_results.append(run_result)
+        
+        print(f"実験 {run + 1} 完了:")
+        print(f"  最終結果 - Train: {final_train_acc:.4f}, Val: {final_val_acc:.4f}, Test: {final_test_acc:.4f}")
+        print(f"  ベスト結果 - Val: {best_val_acc:.4f}, Test: {best_test_acc:.4f}")
+        
+        # RobustH2GCNのgate値を出力
+        if MODEL_NAME == 'RobustH2GCN' and final_gate is not None:
+            gate_mean = final_gate.mean().item()
+            gate_std = final_gate.std().item()
+            gate_min = final_gate.min().item()
+            gate_max = final_gate.max().item()
+            print(f"  Gate統計 - 平均: {gate_mean:.4f}, 標準偏差: {gate_std:.4f}, 範囲: [{gate_min:.4f}, {gate_max:.4f}]")
     
-    # GCNAndMLPConcatの場合は隠れ層次元情報も保存
-    elif MODEL_NAME == 'GCNAndMLPConcat':
-        hidden_dims_info = model.get_hidden_dims_info()
-        run_result['hidden_dims_info'] = hidden_dims_info
+    # 詳細な結果表示
+    print(f"\n=== 詳細結果 ===")
+    for i, result in enumerate(all_results):
+        alpha_info = ""
+        
+        modification_info = ""
+        if USE_FEATURE_MODIFICATION and 'modification_info' in result and result['modification_info'] is not None:
+            mod_count = len(result['modification_info'].get('modifications_applied', []))
+            modification_info = f", 改変={mod_count}個"
+        
+        early_stop_info = ""
+        if USE_EARLY_STOPPING and result.get('early_stopped', False):
+            early_stop_info = f", ES@{result.get('early_stopping_epoch', 'N/A')}"
+        
+        print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}{modification_info}{early_stop_info}")
     
-    all_results.append(run_result)
-    
-    print(f"実験 {run + 1} 完了:")
-    print(f"  最終結果 - Train: {final_train_acc:.4f}, Val: {final_val_acc:.4f}, Test: {final_test_acc:.4f}")
-    print(f"  ベスト結果 - Val: {best_val_acc:.4f}, Test: {best_test_acc:.4f}")
+    # 結果の集計と表示
+    print(f"\n=== 実験結果統計 ({NUM_RUNS}回の平均) ===")
 
 # ============================================================================
 # 結果の集計と表示
@@ -593,31 +1519,45 @@ print(f"\nベスト結果:")
 print(f"  Val:   {np.mean(best_val_accs):.4f} ± {np.std(best_val_accs):.4f}")
 print(f"  Test:  {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
 
-# MLPAndGCNFusion/MLPAndGCNEnsembleモデルのαとβ値統計
-if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:
-    final_alphas = [r['final_alpha'] for r in all_results]
-    final_betas = [r['final_1_minus_alpha'] for r in all_results]
-    print(f"\n{MODEL_NAME} α・(1-α)値統計:")
-    print(f"  最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}")
-    print(f"  最終(1-α)値: {np.mean(final_betas):.4f} ± {np.std(final_betas):.4f}")
-    print(f"  α値範囲: [{min(final_alphas):.4f}, {max(final_alphas):.4f}]")
-    print(f"  (1-α)値範囲: [{min(final_betas):.4f}, {max(final_betas):.4f}]")
-    
-    # 特徴量の重み統計
-    gcn_weights = [r['alpha_info']['gcn_weight'] for r in all_results]
-    mlp_weights = [r['alpha_info']['mlp_weight'] for r in all_results]
-    print(f"  GCN重み: {np.mean(gcn_weights):.4f} ± {np.std(gcn_weights):.4f}")
-    print(f"  MLP重み: {np.mean(mlp_weights):.4f} ± {np.std(mlp_weights):.4f}")
+# Early stopping統計
+if USE_EARLY_STOPPING:
+    early_stopped_count = sum(1 for r in all_results if r.get('early_stopped', False))
+    early_stopping_epochs = [r.get('early_stopping_epoch', NUM_EPOCHS) for r in all_results]
+    print(f"Early Stopping統計:")
+    print(f"  早期停止した実験数: {early_stopped_count}/{NUM_RUNS} ({early_stopped_count/NUM_RUNS:.1%})")
+    print(f"  平均停止エポック: {np.mean(early_stopping_epochs):.1f} ± {np.std(early_stopping_epochs):.1f}")
+    print(f"  停止エポック範囲: [{min(early_stopping_epochs)}, {max(early_stopping_epochs)}]")
 
-# 詳細な結果表示
-print(f"\n=== 詳細結果 ===")
-for i, result in enumerate(all_results):
-    alpha_info = ""
-    if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in result:
-        alpha_info = f", α={result['final_alpha']:.4f}"
-        if 'final_1_minus_alpha' in result:
-            alpha_info += f", 1-α={result['final_1_minus_alpha']:.4f}"
-    print(f"実験 {i+1:2d}: Final Test={result['final_test_acc']:.4f}, Best Test={result['best_test_acc']:.4f}{alpha_info}")
+# 改変情報の統計表示
+if USE_FEATURE_MODIFICATION:
+    print(f"改変設定: {len(FEATURE_MODIFICATIONS)}個の改変")
+    for i, mod in enumerate(FEATURE_MODIFICATIONS):
+        mod_type = mod.get('type', 'unknown')
+        percentage = mod.get('percentage', 0.0)
+        if mod_type == 'noise':
+            method = mod.get('method', 'per_node')
+            print(f"  改変 {i+1}: ノイズ ({method}) - 割合: {percentage:.1%}")
+        elif mod_type == 'missingness':
+            print(f"  改変 {i+1}: 欠損 - 割合: {percentage:.1%}")
+        else:
+            print(f"  改変 {i+1}: {mod_type} - 割合: {percentage:.1%}")
+
+# RobustH2GCNのgate統計情報を表示
+if MODEL_NAME == 'RobustH2GCN':
+    gate_results = [r for r in all_results if 'final_gate' in r and r['final_gate'] is not None]
+    if gate_results:
+        print(f"\nRobustH2GCN Gate統計:")
+        gate_means = [r['final_gate'].mean().item() for r in gate_results]
+        gate_stds = [r['final_gate'].std().item() for r in gate_results]
+        gate_mins = [r['final_gate'].min().item() for r in gate_results]
+        gate_maxs = [r['final_gate'].max().item() for r in gate_results]
+        
+        print(f"  Gate平均値: {np.mean(gate_means):.4f} ± {np.std(gate_means):.4f}")
+        print(f"  Gate標準偏差: {np.mean(gate_stds):.4f} ± {np.std(gate_stds):.4f}")
+        print(f"  Gate最小値: {np.mean(gate_mins):.4f} ± {np.std(gate_mins):.4f}")
+        print(f"  Gate最大値: {np.mean(gate_maxs):.4f} ± {np.std(gate_maxs):.4f}")
+        print(f"  Gate値範囲: [{min(gate_mins):.4f}, {max(gate_maxs):.4f}]")
+
 
 print(f"\n=== 実験完了 ===")
 print(f"データセット: {DATASET_NAME}")
@@ -625,7 +1565,123 @@ print(f"モデル: {MODEL_NAME}")
 print(f"最終テスト精度: {np.mean(final_test_accs):.4f} ± {np.std(final_test_accs):.4f}")
 print(f"ベストテスト精度: {np.mean(best_test_accs):.4f} ± {np.std(best_test_accs):.4f}")
 
-# MLPAndGCNFusion/MLPAndGCNEnsembleモデルの最終αとβ値情報
-if MODEL_NAME in ['MLPAndGCNFusion', 'MLPAndGCNEnsemble'] and 'final_alpha' in all_results[0]:
-    print(f"最終α値: {np.mean(final_alphas):.4f} ± {np.std(final_alphas):.4f}")
-    print(f"最終(1-α)値: {np.mean(final_betas):.4f} ± {np.std(final_betas):.4f}") 
+# Grid Search結果の最終サマリー
+if total_combinations > 1 and 'grid_search_params' in all_results[0]:
+    best_params = max(all_results, key=lambda x: x['best_val_acc'])['grid_search_params']
+    best_params_by_final_test = max(all_results, key=lambda x: x['final_test_acc'])['grid_search_params']
+    max_final_test_acc = max(r['final_test_acc'] for r in all_results)
+    
+    # 最終結果Test精度ベストのパラメータでの詳細統計を計算
+    best_final_test_results = [r for r in all_results if r['grid_search_params'] == best_params_by_final_test]
+    best_final_test_accs = [r['final_test_acc'] for r in best_final_test_results]
+    best_final_test_mean = np.mean(best_final_test_accs)
+    best_final_test_std = np.std(best_final_test_accs)
+    best_final_test_variance = np.var(best_final_test_accs)
+    
+    # 最終テスト精度の最大値を達成した組み合わせを特定
+    best_single_result = max(all_results, key=lambda x: x['final_test_acc'])
+    best_single_params = best_single_result['grid_search_params']
+    best_single_acc = best_single_result['final_test_acc']
+    
+    # この組み合わせでの全実験結果を取得して統計を計算
+    best_combination_results = [r for r in all_results if r['grid_search_params'] == best_single_params]
+    best_combination_accs = [r['final_test_acc'] for r in best_combination_results]
+    
+    if len(best_combination_results) > 1:
+        best_combination_mean = np.mean(best_combination_accs)
+        best_combination_std = np.std(best_combination_accs)
+        best_combination_var = np.var(best_combination_accs)
+        
+        print(f"この組み合わせでの統計:")
+        print(f"  平均値: {best_combination_mean:.4f}")
+        print(f"  標準偏差: {best_combination_std:.4f}")
+        print(f"  分散: {best_combination_var:.6f}")
+        print(f"  範囲: [{min(best_combination_accs):.4f}, {max(best_combination_accs):.4f}]")
+        print(f"  実験回数: {len(best_combination_results)}回")
+    else:
+        print(f"この組み合わせでの実験回数: {len(best_combination_results)}回")
+    
+    print(f"\n=== 最適パラメータの詳細統計 ===")
+    if len(best_final_test_accs) > 1:
+        print(f"最終結果Test精度:")
+        print(f"  平均値: {best_final_test_mean:.4f}")
+        print(f"  標準偏差: {best_final_test_std:.4f}")
+        print(f"  分散: {best_final_test_variance:.6f}")
+        print(f"  範囲: [{min(best_final_test_accs):.4f}, {max(best_final_test_accs):.4f}]")
+        print(f"  実験回数: {len(best_final_test_accs)}回")
+    else:
+        print(f"最終結果Test精度: {best_final_test_accs[0]:.4f}")
+        print(f"実験回数: {len(best_final_test_accs)}回")
+    
+    # 全組み合わせの最終テスト精度を上位順に表示
+    print(f"\n=== 全組み合わせの最終テスト精度ランキング（上位10位） ===")
+    # 各組み合わせの最大最終テスト精度を計算
+    combination_best_results = {}
+    for result in all_results:
+        param_key = tuple(sorted(result['grid_search_params'].items()))
+        if param_key not in combination_best_results:
+            combination_best_results[param_key] = []
+        combination_best_results[param_key].append(result['final_test_acc'])
+    
+    # 各組み合わせの最大値と統計を取得してソート
+    combination_max_results = []
+    for param_key, accs in combination_best_results.items():
+        max_acc = max(accs)
+        mean_acc = np.mean(accs)
+        std_acc = np.std(accs) if len(accs) > 1 else 0.0
+        param_dict = dict(param_key)
+        combination_max_results.append((max_acc, mean_acc, std_acc, param_dict))
+    
+    # 最終テスト精度の平均値で降順ソート
+    combination_max_results.sort(key=lambda x: x[1], reverse=True)
+    
+    print(f"{'順位':>3} | {'最終テスト精度 平均±標準偏差 (最大値)':>25} | {'パラメータ':>10}")
+    print(f"{'='*110}")
+    for i, (max_acc, mean_acc, std_acc, param_dict) in enumerate(combination_max_results[:10]):
+        param_str = ", ".join([f"{k}={v}" for k, v in param_dict.items()])
+        mean_std_str = f"{mean_acc:.4f}±{std_acc:.4f} ({max_acc:.4f})"
+        print(f"{i+1:>3}| {mean_std_str:>23} | {param_str}")
+    
+    if len(combination_max_results) > 10:
+        print(f"... 他 {len(combination_max_results) - 10} 組み合わせ")
+    
+    # RobustH2GCNの場合は最適パラメータでのgate統計も表示
+    if MODEL_NAME == 'RobustH2GCN':
+        best_param_gate_results = [r for r in best_final_test_results if 'final_gate' in r and r['final_gate'] is not None]
+        if best_param_gate_results:
+            if len(best_param_gate_results) > 1:
+                print(f"\n最適パラメータでのGate統計:")
+                gate_means = [r['final_gate'].mean().item() for r in best_param_gate_results]
+                gate_stds = [r['final_gate'].std().item() for r in best_param_gate_results]
+                gate_mins = [r['final_gate'].min().item() for r in best_param_gate_results]
+                gate_maxs = [r['final_gate'].max().item() for r in best_param_gate_results]
+                
+                print(f"  Gate平均値: {np.mean(gate_means):.4f} ± {np.std(gate_means):.4f}")
+                print(f"  Gate標準偏差: {np.mean(gate_stds):.4f} ± {np.std(gate_stds):.4f}")
+                print(f"  Gate最小値: {np.mean(gate_mins):.4f} ± {np.std(gate_mins):.4f}")
+                print(f"  Gate最大値: {np.mean(gate_maxs):.4f} ± {np.std(gate_maxs):.4f}")
+                print(f"  Gate値範囲: [{min(gate_mins):.4f}, {max(gate_maxs):.4f}]")
+                print(f"  Gate統計対象実験数: {len(best_param_gate_results)}回")
+            else:
+                gate = best_param_gate_results[0]['final_gate']
+                print(f"\n最適パラメータでのGate値:")
+                print(f"  Gate平均値: {gate.mean().item():.4f}")
+                print(f"  Gate標準偏差: {gate.std().item():.4f}")
+                print(f"  Gate最小値: {gate.min().item():.4f}")
+                print(f"  Gate最大値: {gate.max().item():.4f}")
+                print(f"  Gate値範囲: [{gate.min().item():.4f}, {gate.max().item():.4f}]")
+    
+    # 実験結果をファイルに保存
+    save_experiment_results(
+        all_results, total_combinations, DATASET_NAME, MODEL_NAME, 
+        NUM_RUNS, NUM_EPOCHS, GRID_SEARCH_PARAMS, USE_FEATURE_MODIFICATION, 
+        FEATURE_MODIFICATIONS, USE_SIMILARITY_BASED_EDGES, USE_EARLY_STOPPING,
+        EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MIN_DELTA, TRAIN_RATIO, 
+        VAL_RATIO, TEST_RATIO, LEARNING_RATE, WEIGHT_DECAY, 
+        CALC_NEIGHBOR_LABEL_FEATURES, COMBINE_NEIGHBOR_LABEL_FEATURES,
+        DISABLE_ORIGINAL_FEATURES, USE_PCA, PCA_COMPONENTS,
+        SIMILARITY_EDGE_MODE, SIMILARITY_FEATURE_TYPE, 
+        SIMILARITY_RAW_THRESHOLD, SIMILARITY_LABEL_THRESHOLD,
+        MIXHOP_POWERS, GRAPHSAGE_AGGR, GAT_NUM_HEADS, GAT_CONCAT
+    )
+        

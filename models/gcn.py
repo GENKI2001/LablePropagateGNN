@@ -56,7 +56,6 @@ class GCN(torch.nn.Module):
         
         return x
 
-class GCNWithSkip(torch.nn.Module):
     """
     Skip connection付きのGraph Convolutional Network (GCN) モデル
     

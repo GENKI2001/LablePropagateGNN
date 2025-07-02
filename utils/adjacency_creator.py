@@ -3,6 +3,38 @@ from torch_geometric.utils import add_self_loops, degree
 from torch_geometric.data import Data
 
 
+def make_undirected(data: Data, device: torch.device):
+    """
+    データオブジェクトのedge_indexを無向グラフに修正する関数
+    
+    Args:
+        data: PyTorch Geometricのデータオブジェクト
+        device: 計算デバイス
+    
+    Returns:
+        Data: 無向グラフに修正されたデータオブジェクト
+    """
+    print(f"=== エッジを無向グラフに修正 ===")
+    print(f"修正前のエッジ数: {data.edge_index.shape[1]}")
+    
+    # 無向グラフにするために、エッジの逆方向を追加
+    edge_index_undirected = torch.cat([
+        data.edge_index,
+        data.edge_index.flip(0)  # 逆方向のエッジを追加
+    ], dim=1)
+    
+    # 重複エッジを除去
+    edge_index_undirected = torch.unique(edge_index_undirected, dim=1)
+    
+    # データオブジェクトのedge_indexを更新
+    data.edge_index = edge_index_undirected.to(device)
+    
+    print(f"修正後のエッジ数: {data.edge_index.shape[1]}")
+    print(f"エッジ数増加: {data.edge_index.shape[1] - (data.edge_index.shape[1] // 2)}")
+    
+    return data
+
+
 def create_normalized_adjacency_matrices(data: Data, device: torch.device, max_hops: int = 2):
     """
     H2GCNスタイルの正規化された隣接行列を作成する関数
@@ -262,148 +294,3 @@ def print_adjacency_info(adjacency_matrices: dict):
             density = adj_matrix._nnz() / (adj_matrix.shape[0] * adj_matrix.shape[1])
             print(f"  密度: {density:.6f}")
 
-
-def verify_normalization(adjacency_matrices: dict, data: Data):
-    """
-    隣接行列の正規化が正しく行われているかを検証する関数
-    
-    Args:
-        adjacency_matrices: create_normalized_adjacency_matricesで作成された辞書
-        data: PyTorch Geometricのデータオブジェクト
-    """
-    print(f"\n=== 正規化検証 ===")
-    
-    for key, adj_matrix in adjacency_matrices.items():
-        print(f"\n{key}の検証:")
-        
-        # 密行列に変換
-        adj_dense = adj_matrix.to_dense()
-        
-        # 行方向の合計を計算
-        row_sums = adj_dense.sum(dim=1)
-        col_sums = adj_dense.sum(dim=0)
-        
-        # 対称性の確認
-        is_symmetric = torch.allclose(adj_dense, adj_dense.t(), atol=1e-6)
-        
-        print(f"  対称性: {is_symmetric}")
-        print(f"  行方向合計の範囲: [{row_sums.min():.6f}, {row_sums.max():.6f}]")
-        print(f"  列方向合計の範囲: [{col_sums.min():.6f}, {col_sums.max():.6f}]")
-        
-        # 自己ループの確認（1-hopの場合）
-        if '1hop' in key:
-            diagonal = torch.diag(adj_dense)
-            has_self_loops = torch.any(diagonal > 0)
-            print(f"  自己ループ: {has_self_loops}")
-            print(f"  自己ループ値の範囲: [{diagonal.min():.6f}, {diagonal.max():.6f}]")
-        
-        # 非負性の確認
-        is_nonnegative = torch.all(adj_dense >= 0)
-        print(f"  非負性: {is_nonnegative}")
-        
-        # 最大値の確認
-        max_val = adj_dense.max()
-        print(f"  最大値: {max_val:.6f}")
-        
-        # 正規化の確認（行方向の合計が1に近いか）
-        if '1hop' in key:
-            # 1-hopの場合、行方向の合計は1に近いはず
-            row_sum_deviation = torch.abs(row_sums - 1.0).max()
-            print(f"  行方向合計からの偏差: {row_sum_deviation:.6f}")
-            is_properly_normalized = row_sum_deviation < 1e-3
-            print(f"  正規化状態: {'OK' if is_properly_normalized else 'NG'}")
-
-    """
-    H2GCNの要件を満たしているかを検証する関数
-    1. exactly k-hop nodes
-    2. disjoint neighborhoods
-    
-    Args:
-        adjacency_matrices: create_normalized_adjacency_matricesで作成された辞書
-        data: PyTorch Geometricのデータオブジェクト
-    """
-    print(f"\n=== H2GCN要件検証 ===")
-    
-    # 無向グラフの元の隣接行列
-    edge_index_undirected = torch.cat([
-        data.edge_index,
-        data.edge_index.flip(0)
-    ], dim=1)
-    edge_index_undirected = torch.unique(edge_index_undirected, dim=1)
-    
-    adj_original = torch.sparse_coo_tensor(
-        indices=edge_index_undirected,
-        values=torch.ones(edge_index_undirected.shape[1]),
-        size=(data.num_nodes, data.num_nodes)
-    ).to_dense()
-    
-    hop_matrices = {}
-    
-    for key, adj_matrix in adjacency_matrices.items():
-        print(f"\n{key}のH2GCN要件検証:")
-        
-        # 密行列に変換
-        adj_dense = adj_matrix.to_dense()
-        hop_matrices[key] = adj_dense
-        
-        # 1. 自己ループの確認（すべてのhopで自己ループは0であるべき）
-        diagonal = torch.diag(adj_dense)
-        has_self_loops = torch.any(diagonal > 0)
-        print(f"  自己ループ: {has_self_loops} (Falseであるべき)")
-        
-        # 2. 非負性の確認
-        is_nonnegative = torch.all(adj_dense >= 0)
-        print(f"  非負性: {is_nonnegative}")
-        
-        # 3. 対称性の確認
-        is_symmetric = torch.allclose(adj_dense, adj_dense.t(), atol=1e-6)
-        print(f"  対称性: {is_symmetric}")
-        
-        # 4. 非ゼロ要素数の確認
-        nonzero_count = torch.count_nonzero(adj_dense)
-        print(f"  非ゼロ要素数: {nonzero_count}")
-    
-    # 5. disjoint neighborhoodsの確認
-    print(f"\n=== Disjoint Neighborhoods検証 ===")
-    hop_keys = list(hop_matrices.keys())
-    
-    for i, key1 in enumerate(hop_keys):
-        for j, key2 in enumerate(hop_keys):
-            if i < j:  # 異なるhopの組み合わせのみ
-                matrix1 = hop_matrices[key1]
-                matrix2 = hop_matrices[key2]
-                
-                # 共通の非ゼロ要素があるかチェック
-                common_elements = torch.logical_and(matrix1 > 0, matrix2 > 0)
-                has_overlap = torch.any(common_elements)
-                
-                print(f"  {key1} vs {key2}: 重複{'あり' if has_overlap else 'なし'} (なしであるべき)")
-                
-                if has_overlap:
-                    overlap_count = torch.count_nonzero(common_elements)
-                    print(f"    重複要素数: {overlap_count}")
-    
-    # 6. exactly k-hopの確認（理論的検証）
-    print(f"\n=== Exactly k-hop検証 ===")
-    
-    if 'adj_1hop' in hop_matrices and 'adj_2hop' in hop_matrices:
-        # 1-hop行列は元の隣接行列と一致するべき（正規化の違いは無視）
-        adj_1hop = hop_matrices['adj_1hop']
-        # 非ゼロの位置を比較
-        nonzero_positions_1hop = (adj_1hop > 0)
-        nonzero_positions_original = (adj_original > 0)
-        is_1hop_correct = torch.allclose(nonzero_positions_1hop, nonzero_positions_original)
-        print(f"  1-hop行列の非ゼロ位置が元の隣接行列と一致: {is_1hop_correct}")
-        
-        # 2-hop行列はA^2から1-hopを除いたものと一致するべき
-        adj_2hop = hop_matrices['adj_2hop']
-        adj_2hop_theoretical = torch.mm(adj_original, adj_original) * (1 - adj_original)
-        adj_2hop_theoretical.fill_diagonal_(0)
-        
-        # 正規化を考慮して比較（値の絶対値ではなく、非ゼロの位置を比較）
-        nonzero_positions_actual = (adj_2hop > 0)
-        nonzero_positions_theoretical = (adj_2hop_theoretical > 0)
-        positions_match = torch.allclose(nonzero_positions_actual, nonzero_positions_theoretical)
-        print(f"  2-hop行列の非ゼロ位置が理論値と一致: {positions_match}")
-    
-    print(f"\n=== H2GCN要件検証完了 ===") 
