@@ -23,7 +23,7 @@ DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
 
 # サポートされているモデル:
 # - 'MLP', 'GCN', 'GAT', 'H2GCN', 'RobustH2GCN', 'MixHop', 'GraphSAGE', 'RGCN'
-MODEL_NAME = 'RGCN'
+MODEL_NAME = 'RobustH2GCN'
 
 # 実験設定
 NUM_RUNS = 10  # 実験回数（テスト用に減らす）
@@ -34,22 +34,26 @@ CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴�
 COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
 DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
 
+# 簡易実験のため、組み合わせ回数は全部で 9回(3*3*1) に統一
+# HIDDEN_CHANNELSは 64 に固定
+# NUM_LAYERSは 1 に固定(RobustH2GCNの場合、他は 1か2か3)
+# MAX_HOPSは [2,3,4]
+# TEMPERATUREは [0.5,1.0,2.5]
+# DROPOUTは 0.5
+
 # Grid Search対象パラメータの設定
 GRID_SEARCH_PARAMS = {
-    'HIDDEN_CHANNELS': [16, 32, 64, 128],  # 隠れ層次元
-    'NUM_LAYERS': [1, 2],                   # レイヤー数
+    'HIDDEN_CHANNELS': [64],  # 隠れ層次元
+    'NUM_LAYERS': [1],                   # レイヤー数
     'MAX_HOPS': [2, 3, 4],     # 最大hop数
-    'TEMPERATURE': [0.5, 1.0, 2.5],          # 温度パラメータ
+    'TEMPERATURE': [0.5, 1.0, 2.0],          # 温度パラメータ
     'DROPOUT': [0.5]          # ドロップアウト率
 }
 
-# 単一パラメータのGrid Search設定（削除予定）
-# 新しい複数パラメータGrid Searchを使用してください
-
 # 特徴量改変設定（統合版）
-USE_FEATURE_MODIFICATION = True  # True: 特徴量を改変, False: スキップ
+USE_FEATURE_MODIFICATION = False  # True: 特徴量を改変, False: スキップ
 FEATURE_MODIFICATIONS = [
-    {'type': 'noise', 'percentage': 0.2, 'method': 'per_node'},  # ノイズ追加（0と1を入れ替え）
+    # {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'},  # ノイズ追加（0と1を入れ替え）
     # {'type': 'missingness', 'percentage': 0.3},  # 欠損追加（0にマスキング）
 ]
 
@@ -691,6 +695,10 @@ if total_combinations > 1:
                 run_data, device, max_hops=current_max_hops, calc_neighbor_label_features=CALC_NEIGHBOR_LABEL_FEATURES,
                 temperature=current_temperature
             )
+            
+            # RGCNモデル用に隣接行列をrun_dataに保存
+            if MODEL_NAME == 'RGCN':
+                run_data.adj_matrix = adj_matrix.to(device)
 
             # 隣接ノードのラベル特徴量を結合
             if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
@@ -1192,6 +1200,10 @@ else:
             run_data, device, max_hops=3, calc_neighbor_label_features=CALC_NEIGHBOR_LABEL_FEATURES,
             temperature=0.5
         )
+        
+        # RGCNモデル用に隣接行列をrun_dataに保存
+        if MODEL_NAME == 'RGCN':
+            run_data.adj_matrix = adj_matrix.to(device)
 
         # 隣接ノードのラベル特徴量を結合
         if COMBINE_NEIGHBOR_LABEL_FEATURES and neighbor_label_features is not None:
