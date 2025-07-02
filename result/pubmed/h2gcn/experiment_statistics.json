@@ -1,0 +1,42 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-02 10:08:19",
+    "dataset": "Pubmed",
+    "model": "H2GCN"
+  },
+  "total_experiments": 40,
+  "final_results": {
+    "train": {
+      "mean": 0.9142899408284023,
+      "std": 0.0018038921823577397
+    },
+    "val": {
+      "mean": 0.8967474004565051,
+      "std": 0.0046943216559642426
+    },
+    "test": {
+      "mean": 0.896475659229209,
+      "std": 0.004337182290466636
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.8986368247527263,
+      "std": 0.004985107989560629
+    },
+    "test": {
+      "mean": 0.8958291075050709,
+      "std": 0.00423304615152748
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 40,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 159.6,
+    "stopping_epoch_std": 37.390373092548835,
+    "stopping_epoch_range": [
+      103,
+      238
+    ]
+  }
+}

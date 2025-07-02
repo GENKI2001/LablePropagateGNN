@@ -1,0 +1,65 @@
+=== H2GCN on Citeseer Dataset - Grid Search Results ===
+Date: 2025-07-02 08:50:31
+
+EXPERIMENT SETTINGS:
+- Dataset: Citeseer
+- Model: H2GCN
+- Number of runs: 10
+- Number of epochs: 600
+- Grid search combinations: 72
+- Total experiments: 720
+
+GRID SEARCH PARAMETERS:
+- HIDDEN_CHANNELS: [16, 32, 64, 128]
+- NUM_LAYERS: [1, 2]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5, 1.0, 2.5]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=32, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.7607 ± 0.0186 (max: 0.7868)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=16, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=2.5
+   Final Test Accuracy: 0.7598 ± 0.0112 (max: 0.7778)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=16, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=2.5
+   Final Test Accuracy: 0.7596 ± 0.0119 (max: 0.7853)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=1.0
+   Final Test Accuracy: 0.7595 ± 0.0093 (max: 0.7748)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=32, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=2.5
+   Final Test Accuracy: 0.7581 ± 0.0122 (max: 0.7823)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=32, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=1.0
+   Final Test Accuracy: 0.7580 ± 0.0075 (max: 0.7673)
+
+7. DROPOUT=0.5, HIDDEN_CHANNELS=16, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.7577 ± 0.0121 (max: 0.7868)
+
+8. DROPOUT=0.5, HIDDEN_CHANNELS=16, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.7575 ± 0.0104 (max: 0.7748)
+
+9. DROPOUT=0.5, HIDDEN_CHANNELS=16, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=1.0
+   Final Test Accuracy: 0.7565 ± 0.0111 (max: 0.7718)
+
+10. DROPOUT=0.5, HIDDEN_CHANNELS=32, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=2.5
+   Final Test Accuracy: 0.7563 ± 0.0188 (max: 0.7898)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=128, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=32, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.7423 ± 0.0178
+- Best single run test accuracy: 0.7688
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 720/720 (100.0%)
+- Average stopping epoch: 64.8 ± 16.5
+- Stopping epoch range: [53, 196]
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=128, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5, achieving a final test accuracy of 74.9% ± 1.0%.

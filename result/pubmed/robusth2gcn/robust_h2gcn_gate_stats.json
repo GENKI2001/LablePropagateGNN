@@ -1,0 +1,60 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-02 10:40:56",
+    "dataset": "Pubmed",
+    "model": "RobustH2GCN"
+  },
+  "gate_statistics": {
+    "gate_mean": {
+      "mean": 0.29826217661611737,
+      "std": 0.21522447056159844
+    },
+    "gate_std": {
+      "mean": 0.1816597013734281,
+      "std": 0.09279319030505045
+    },
+    "gate_min": {
+      "mean": 0.002686891438661108,
+      "std": 0.004521074733303765
+    },
+    "gate_max": {
+      "mean": 0.7737549606710672,
+      "std": 0.2734482303322674
+    },
+    "gate_range": [
+      5.887239307167391e-11,
+      0.9999980926513672
+    ],
+    "experiment_count": 40
+  },
+  "best_parameter_gate_stats": {
+    "gate_mean": {
+      "mean": 0.374076297134161,
+      "std": 0.17187422389216953
+    },
+    "gate_std": {
+      "mean": 0.22839108370244504,
+      "std": 0.07880079303655863
+    },
+    "gate_min": {
+      "mean": 0.0034456635507012835,
+      "std": 0.005263615056507264
+    },
+    "gate_max": {
+      "mean": 0.9220835000276566,
+      "std": 0.2021834192767589
+    },
+    "gate_range": [
+      4.749238087242702e-06,
+      0.9999979734420776
+    ],
+    "experiment_count": 10,
+    "best_parameters": {
+      "DROPOUT": 0.5,
+      "HIDDEN_CHANNELS": 64,
+      "MAX_HOPS": 1,
+      "NUM_LAYERS": 2,
+      "TEMPERATURE": 1.0
+    }
+  }
+}

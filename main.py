@@ -19,18 +19,18 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Chameleon'  # ここを変更してデータセットを切り替え
 
 # サポートされているモデル:
 # - 'MLP', 'GCN', 'GAT', 'H2GCN', 'RobustH2GCN', 'MixHop', 'GraphSAGE'
-MODEL_NAME = 'RobustH2GCN'
+MODEL_NAME = 'H2GCN'
 
 # 実験設定
 NUM_RUNS = 10  # 実験回数（テスト用に減らす）
 NUM_EPOCHS = 600  # エポック数（テスト用に減らす）
 
 # 特徴量作成設定
-CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
+CALC_NEIGHBOR_LABEL_FEATURES = False  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
 COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
 DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
 
