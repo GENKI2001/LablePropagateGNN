@@ -7,6 +7,7 @@ from .h2gcn import H2GCN
 from .mixhop import MixHop
 from .graphsage import GraphSAGE
 from .robust_h2gcn import RobustH2GCN
+from .rgcn import RGCN
 
 class ModelFactory:
     """
@@ -129,6 +130,15 @@ class ModelFactory:
                 aggr=aggr
             )
         
+        elif model_name == 'RGCN':
+            return RGCN(
+                in_channels=in_channels,
+                hidden_channels=hidden_channels,
+                out_channels=out_channels,
+                num_layers=default_params['num_layers'],
+                dropout=default_params['dropout']
+            )
+        
 
         
         else:
@@ -184,6 +194,11 @@ class ModelFactory:
             'GraphSAGE': {
                 'description': 'GraphSAGE Model (inductive learning on large graphs)',
                 'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout', 'aggr'],
+                'default_hidden_channels': 16
+            },
+            'RGCN': {
+                'description': 'Robust Graph Convolutional Network (uses Gaussian distributions for uncertainty modeling)',
+                'parameters': ['in_channels', 'hidden_channels', 'out_channels', 'num_layers', 'dropout'],
                 'default_hidden_channels': 16
             },
 

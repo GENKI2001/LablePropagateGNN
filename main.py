@@ -19,18 +19,18 @@ from models import ModelFactory
 # WebKB: 'Cornell', 'Texas', 'Wisconsin'
 # WikipediaNetwork: 'Chameleon', 'Squirrel'
 # Actor: 'Actor'
-DATASET_NAME = 'Chameleon'  # ここを変更してデータセットを切り替え
+DATASET_NAME = 'Cora'  # ここを変更してデータセットを切り替え
 
 # サポートされているモデル:
-# - 'MLP', 'GCN', 'GAT', 'H2GCN', 'RobustH2GCN', 'MixHop', 'GraphSAGE'
-MODEL_NAME = 'H2GCN'
+# - 'MLP', 'GCN', 'GAT', 'H2GCN', 'RobustH2GCN', 'MixHop', 'GraphSAGE', 'RGCN'
+MODEL_NAME = 'RGCN'
 
 # 実験設定
 NUM_RUNS = 10  # 実験回数（テスト用に減らす）
 NUM_EPOCHS = 600  # エポック数（テスト用に減らす）
 
 # 特徴量作成設定
-CALC_NEIGHBOR_LABEL_FEATURES = False  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
+CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
 COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
 DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
 
@@ -47,9 +47,9 @@ GRID_SEARCH_PARAMS = {
 # 新しい複数パラメータGrid Searchを使用してください
 
 # 特徴量改変設定（統合版）
-USE_FEATURE_MODIFICATION = False  # True: 特徴量を改変, False: スキップ
+USE_FEATURE_MODIFICATION = True  # True: 特徴量を改変, False: スキップ
 FEATURE_MODIFICATIONS = [
-    # {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'},  # ノイズ追加（0と1を入れ替え）
+    {'type': 'noise', 'percentage': 0.2, 'method': 'per_node'},  # ノイズ追加（0と1を入れ替え）
     # {'type': 'missingness', 'percentage': 0.3},  # 欠損追加（0にマスキング）
 ]
 
@@ -113,7 +113,26 @@ def save_experiment_results(all_results, total_combinations, DATASET_NAME, MODEL
     実験結果をJSONファイルとして保存する関数
     """
     # データセット名とモデル名に応じた結果ディレクトリを作成
-    result_dir = f"result/{DATASET_NAME.lower()}/{MODEL_NAME.lower()}"
+    base_result_dir = f"result/{DATASET_NAME.lower()}/{MODEL_NAME.lower()}"
+    
+    # FEATURE_MODIFICATIONSが設定されている場合、ディレクトリ名に改変情報を追加
+    if USE_FEATURE_MODIFICATION and FEATURE_MODIFICATIONS:
+        modification_suffix = ""
+        for i, mod in enumerate(FEATURE_MODIFICATIONS):
+            mod_type = mod.get('type', 'unknown')
+            percentage = mod.get('percentage', 0.0)
+            if mod_type == 'noise':
+                method = mod.get('method', 'per_node')
+                modification_suffix += f"-{mod_type}-{method}-{percentage:.1f}"
+            elif mod_type == 'missingness':
+                modification_suffix += f"-{mod_type}-{percentage:.1f}"
+            else:
+                modification_suffix += f"-{mod_type}-{percentage:.1f}"
+        
+        result_dir = f"{base_result_dir}{modification_suffix}"
+    else:
+        result_dir = base_result_dir
+    
     os.makedirs(result_dir, exist_ok=True)
     
     # 実験設定を保存
@@ -818,6 +837,14 @@ if total_combinations > 1:
                 print(f"    隠れ層次元: {current_hidden_channels}")
                 print(f"    ドロップアウト: {current_dropout}")
             
+            # RGCNモデルの場合はパラメータを指定
+            elif MODEL_NAME == 'RGCN':
+                print(f"  RGCNモデル作成:")
+                print(f"    特徴量次元: {actual_feature_dim}")
+                print(f"    隠れ層次元: {current_hidden_channels}")
+                print(f"    レイヤー数: {current_num_layers}")
+                print(f"    ドロップアウト: {current_dropout}")
+            
             model = ModelFactory.create_model(**model_kwargs).to(device)
             
             optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -839,6 +866,9 @@ if total_combinations > 1:
                         print(f"  ラベル特徴量がないため、one-hotラベルを使用")
                         one_hot_labels_tensor = one_hot_labels.to(device)
                         out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
+                elif MODEL_NAME == 'RGCN':
+                    # RGCNは隣接行列を使用
+                    out = model(run_data.x, run_data.adj_matrix)
                 else:
                     # その他のモデルは標準的な処理
                     out = model(run_data.x, run_data.edge_index)
@@ -865,6 +895,10 @@ if total_combinations > 1:
                         # ラベル特徴量がない場合は、one-hotラベルを使用
                         one_hot_labels_tensor = one_hot_labels.to(device)
                         out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
+                elif MODEL_NAME == 'RGCN':
+                    # RGCNは隣接行列を使用
+                    out = model(run_data.x, run_data.adj_matrix)
+                    gate = None
                 else:
                     # その他のモデルは標準的な処理
                     out = model(run_data.x, run_data.edge_index)
@@ -1304,6 +1338,14 @@ else:
             print(f"    隠れ層次元: 32 (デフォルト)")
             print(f"    ドロップアウト: 0.5 (デフォルト)")
         
+        # RGCNモデルの場合はパラメータを指定
+        elif MODEL_NAME == 'RGCN':
+            print(f"  RGCNモデル作成:")
+            print(f"    特徴量次元: {actual_feature_dim}")
+            print(f"    隠れ層次元: 32 (デフォルト)")
+            print(f"    レイヤー数: 1 (デフォルト)")
+            print(f"    ドロップアウト: 0.5 (デフォルト)")
+        
         model = ModelFactory.create_model(**model_kwargs).to(device)
         
         optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
@@ -1324,6 +1366,9 @@ else:
                     # ラベル特徴量がない場合は、one-hotラベルを使用
                     one_hot_labels_tensor = one_hot_labels.to(device)
                     out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
+            elif MODEL_NAME == 'RGCN':
+                # RGCNは隣接行列を使用
+                out = model(run_data.x, run_data.adj_matrix)
             else:
                 # その他のモデルは標準的な処理
                 out = model(run_data.x, run_data.edge_index)
@@ -1350,6 +1395,10 @@ else:
                     # ラベル特徴量がない場合は、one-hotラベルを使用
                     one_hot_labels_tensor = one_hot_labels.to(device)
                     out, gate = model(run_data.x, one_hot_labels_tensor, run_data.adj_1hop, run_data.adj_2hop)
+            elif MODEL_NAME == 'RGCN':
+                # RGCNは隣接行列を使用
+                out = model(run_data.x, run_data.adj_matrix)
+                gate = None
             else:
                 # その他のモデルは標準的な処理
                 out = model(run_data.x, run_data.edge_index)

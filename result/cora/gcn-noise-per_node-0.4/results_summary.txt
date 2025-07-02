@@ -1,0 +1,69 @@
+=== GCN on Cora Dataset - Grid Search Results ===
+Date: 2025-07-02 17:05:08
+
+EXPERIMENT SETTINGS:
+- Dataset: Cora
+- Model: GCN
+- Number of runs: 10
+- Number of epochs: 600
+- Grid search combinations: 72
+- Total experiments: 720
+
+GRID SEARCH PARAMETERS:
+- HIDDEN_CHANNELS: [16, 32, 64, 128]
+- NUM_LAYERS: [1, 2]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5, 1.0, 2.5]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=128, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.7680 ± 0.1570 (max: 0.8527)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=32, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.7494 ± 0.0183 (max: 0.7937)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=32, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=1.0
+   Final Test Accuracy: 0.7470 ± 0.0242 (max: 0.8011)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=128, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.7459 ± 0.0200 (max: 0.7753)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=2.5
+   Final Test Accuracy: 0.7444 ± 0.0101 (max: 0.7624)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.7440 ± 0.0162 (max: 0.7661)
+
+7. DROPOUT=0.5, HIDDEN_CHANNELS=16, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=1.0
+   Final Test Accuracy: 0.7438 ± 0.0177 (max: 0.7808)
+
+8. DROPOUT=0.5, HIDDEN_CHANNELS=128, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=2.5
+   Final Test Accuracy: 0.7433 ± 0.0216 (max: 0.7845)
+
+9. DROPOUT=0.5, HIDDEN_CHANNELS=128, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.7427 ± 0.0125 (max: 0.7661)
+
+10. DROPOUT=0.5, HIDDEN_CHANNELS=16, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.7425 ± 0.0112 (max: 0.7606)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=128, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=128, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.5536 ± 0.2598
+- Best single run test accuracy: 0.8398
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 720/720 (100.0%)
+- Average stopping epoch: 192.7 ± 118.9
+- Stopping epoch range: [50, 557]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['noise']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=128, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5, achieving a final test accuracy of 76.8% ± 15.7%.
