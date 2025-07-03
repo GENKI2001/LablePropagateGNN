@@ -1,6 +1,6 @@
 {
   "experiment_info": {
-    "timestamp": "2025-07-02 08:26:02",
+    "timestamp": "2025-07-02 19:31:50",
     "dataset": "Cora",
     "model": "H2GCN"
   },
@@ -8,7 +8,7 @@
   "model_name": "H2GCN",
   "num_runs": 10,
   "num_epochs": 600,
-  "calc_neighbor_label_features": true,
+  "calc_neighbor_label_features": false,
   "combine_neighbor_label_features": false,
   "disable_original_features": false,
   "use_feature_modification": false,
@@ -38,14 +38,12 @@
   "early_stopping_min_delta": 0.001,
   "grid_search_parameters": {
     "HIDDEN_CHANNELS": [
-      16,
-      32,
-      64,
-      128
+      64
     ],
     "NUM_LAYERS": [
       1,
-      2
+      2,
+      3
     ],
     "MAX_HOPS": [
       2,
@@ -53,9 +51,7 @@
       4
     ],
     "TEMPERATURE": [
-      0.5,
-      1.0,
-      2.5
+      0.5
     ],
     "DROPOUT": [
       0.5

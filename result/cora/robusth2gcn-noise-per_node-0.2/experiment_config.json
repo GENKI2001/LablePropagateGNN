@@ -1,6 +1,6 @@
 {
   "experiment_info": {
-    "timestamp": "2025-07-02 18:25:19",
+    "timestamp": "2025-07-02 19:47:43",
     "dataset": "Cora",
     "model": "RobustH2GCN"
   },
@@ -44,14 +44,10 @@
   "early_stopping_min_delta": 0.001,
   "grid_search_parameters": {
     "HIDDEN_CHANNELS": [
-      16,
-      32,
-      64,
-      128
+      64
     ],
     "NUM_LAYERS": [
-      1,
-      2
+      1
     ],
     "MAX_HOPS": [
       2,
@@ -61,7 +57,7 @@
     "TEMPERATURE": [
       0.5,
       1.0,
-      2.5
+      2.0
     ],
     "DROPOUT": [
       0.5

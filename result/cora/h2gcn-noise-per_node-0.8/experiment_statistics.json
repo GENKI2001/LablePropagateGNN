@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-02 20:59:24",
+    "dataset": "Cora",
+    "model": "H2GCN"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.4830801860974274,
+      "std": 0.21590615522451212
+    },
+    "val": {
+      "mean": 0.3002875333744095,
+      "std": 0.11506283043542305
+    },
+    "test": {
+      "mean": 0.3027010435850215,
+      "std": 0.1147866212357422
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.47313616759088106,
+      "std": 0.12658774893146205
+    },
+    "test": {
+      "mean": 0.46994065889093517,
+      "std": 0.12259827032943461
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 141.73333333333332,
+    "stopping_epoch_std": 74.50261740368589,
+    "stopping_epoch_range": [
+      50,
+      600
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

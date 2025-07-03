@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 02:04:56",
+    "dataset": "Cora",
+    "model": "MixHop"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.45385878489326775,
+      "std": 0.24645939357995436
+    },
+    "val": {
+      "mean": 0.30061614294516326,
+      "std": 0.029851410348353286
+    },
+    "test": {
+      "mean": 0.29977491303458154,
+      "std": 0.027810270707153185
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.3107825015403574,
+      "std": 0.018933141349718942
+    },
+    "test": {
+      "mean": 0.3039287906691222,
+      "std": 0.019843313881580685
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 78.32222222222222,
+    "stopping_epoch_std": 43.24627865243379,
+    "stopping_epoch_range": [
+      50,
+      242
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

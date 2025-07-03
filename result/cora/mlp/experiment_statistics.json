@@ -1,42 +1,42 @@
 {
   "experiment_info": {
-    "timestamp": "2025-07-02 15:46:14",
+    "timestamp": "2025-07-02 19:11:32",
     "dataset": "Cora",
     "model": "MLP"
   },
-  "total_experiments": 720,
+  "total_experiments": 90,
   "final_results": {
     "train": {
-      "mean": 0.9987068965517242,
-      "std": 0.001009927307072458
+      "mean": 0.9992542419266558,
+      "std": 0.0006776162821489336
     },
     "val": {
-      "mean": 0.7450939617991374,
-      "std": 0.016402945448293384
+      "mean": 0.7431505442596015,
+      "std": 0.017319889122652837
     },
     "test": {
-      "mean": 0.7469459791282996,
-      "std": 0.017701226138809558
+      "mean": 0.7421526498874564,
+      "std": 0.01781184404253242
     }
   },
   "best_results": {
     "val": {
-      "mean": 0.7623510987882521,
-      "std": 0.016537537381708687
+      "mean": 0.7619634421852537,
+      "std": 0.016023928963635466
     },
     "test": {
-      "mean": 0.7515525885001022,
-      "std": 0.01824645074866266
+      "mean": 0.7478616738285246,
+      "std": 0.018979803374614326
     }
   },
   "early_stopping": {
-    "early_stopped_experiments": 720,
+    "early_stopped_experiments": 90,
     "early_stopping_rate": 1.0,
-    "average_stopping_epoch": 88.10833333333333,
-    "stopping_epoch_std": 34.687604854696374,
+    "average_stopping_epoch": 82.02222222222223,
+    "stopping_epoch_std": 28.421422975470765,
     "stopping_epoch_range": [
-      57,
-      299
+      59,
+      181
     ]
   }
 }

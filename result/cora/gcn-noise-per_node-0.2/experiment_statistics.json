@@ -1,42 +1,42 @@
 {
   "experiment_info": {
-    "timestamp": "2025-07-02 16:34:41",
+    "timestamp": "2025-07-02 21:12:18",
     "dataset": "Cora",
     "model": "GCN"
   },
-  "total_experiments": 720,
+  "total_experiments": 90,
   "final_results": {
     "train": {
-      "mean": 0.8806812739463601,
-      "std": 0.2349317870420492
+      "mean": 0.937985769020252,
+      "std": 0.1397524999846583
     },
     "val": {
-      "mean": 0.7223839597453277,
-      "std": 0.17231003597477118
+      "mean": 0.7940439515300883,
+      "std": 0.11072038245930585
     },
     "test": {
-      "mean": 0.7212144464906896,
-      "std": 0.1733094189624882
+      "mean": 0.7935338653570697,
+      "std": 0.11059522442220539
     }
   },
   "best_results": {
     "val": {
-      "mean": 0.7305196138837543,
-      "std": 0.17341419417265858
+      "mean": 0.8055658246046415,
+      "std": 0.11304397785127386
     },
     "test": {
-      "mean": 0.7210456312666257,
-      "std": 0.17208707057624084
+      "mean": 0.7948025373439739,
+      "std": 0.11141761758733192
     }
   },
   "early_stopping": {
-    "early_stopped_experiments": 716,
-    "early_stopping_rate": 0.9944444444444445,
-    "average_stopping_epoch": 175.92916666666667,
-    "stopping_epoch_std": 95.40286936271302,
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 188.17777777777778,
+    "stopping_epoch_std": 58.376475052080465,
     "stopping_epoch_range": [
       50,
-      600
+      344
     ]
   },
   "feature_modification": {

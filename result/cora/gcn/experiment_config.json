@@ -1,6 +1,6 @@
 {
   "experiment_info": {
-    "timestamp": "2025-07-02 16:04:28",
+    "timestamp": "2025-07-02 19:13:35",
     "dataset": "Cora",
     "model": "GCN"
   },
@@ -8,10 +8,10 @@
   "model_name": "GCN",
   "num_runs": 10,
   "num_epochs": 600,
-  "calc_neighbor_label_features": false,
+  "calc_neighbor_label_features": true,
   "combine_neighbor_label_features": false,
   "disable_original_features": false,
-  "use_feature_modification": true,
+  "use_feature_modification": false,
   "feature_modifications": [],
   "use_similarity_based_edges": false,
   "similarity_edge_mode": "add",
@@ -38,14 +38,12 @@
   "early_stopping_min_delta": 0.001,
   "grid_search_parameters": {
     "HIDDEN_CHANNELS": [
-      16,
-      32,
-      64,
-      128
+      64
     ],
     "NUM_LAYERS": [
       1,
-      2
+      2,
+      3
     ],
     "MAX_HOPS": [
       2,
@@ -53,9 +51,7 @@
       4
     ],
     "TEMPERATURE": [
-      0.5,
-      1.0,
-      2.5
+      0.5
     ],
     "DROPOUT": [
       0.5
