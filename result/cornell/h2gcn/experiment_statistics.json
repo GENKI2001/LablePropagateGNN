@@ -1,42 +1,42 @@
 {
   "experiment_info": {
-    "timestamp": "2025-07-01 23:52:25",
+    "timestamp": "2025-07-03 14:36:16",
     "dataset": "Cornell",
     "model": "H2GCN"
   },
-  "total_experiments": 720,
+  "total_experiments": 90,
   "final_results": {
     "train": {
       "mean": 1.0,
       "std": 0.0
     },
     "val": {
-      "mean": 0.7668209876543209,
-      "std": 0.0710461715334438
+      "mean": 0.7450617283950618,
+      "std": 0.0721483213761536
     },
     "test": {
-      "mean": 0.7686769005847954,
-      "std": 0.06414113383526521
+      "mean": 0.7725146198830409,
+      "std": 0.06567957031976228
     }
   },
   "best_results": {
     "val": {
-      "mean": 0.8047839506172838,
-      "std": 0.06517298888661292
+      "mean": 0.7830246913580245,
+      "std": 0.06989292766947626
     },
     "test": {
-      "mean": 0.7427631578947368,
-      "std": 0.06988392026410979
+      "mean": 0.7277777777777777,
+      "std": 0.07867018701052335
     }
   },
   "early_stopping": {
-    "early_stopped_experiments": 720,
+    "early_stopped_experiments": 90,
     "early_stopping_rate": 1.0,
-    "average_stopping_epoch": 79.18194444444444,
-    "stopping_epoch_std": 26.665915751869512,
+    "average_stopping_epoch": 70.74444444444444,
+    "stopping_epoch_std": 26.569222424582048,
     "stopping_epoch_range": [
-      50,
-      198
+      52,
+      197
     ]
   }
 }

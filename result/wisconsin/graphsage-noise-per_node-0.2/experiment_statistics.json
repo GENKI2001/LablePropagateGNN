@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 17:35:37",
+    "dataset": "Wisconsin",
+    "model": "GraphSAGE"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.9884444444444443,
+      "std": 0.02165498260458637
+    },
+    "val": {
+      "mean": 0.6451111111111112,
+      "std": 0.06257874052289722
+    },
+    "test": {
+      "mean": 0.637037037037037,
+      "std": 0.061676940406868844
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.703111111111111,
+      "std": 0.05480560483187513
+    },
+    "test": {
+      "mean": 0.626797385620915,
+      "std": 0.061343969345633
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 88.58888888888889,
+    "stopping_epoch_std": 26.601960848547506,
+    "stopping_epoch_range": [
+      56,
+      174
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

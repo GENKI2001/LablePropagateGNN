@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 00:24:08",
+    "dataset": "Chameleon",
+    "model": "GAT"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.545615747519115,
+      "std": 0.2872883714107658
+    },
+    "val": {
+      "mean": 0.4367277167277168,
+      "std": 0.18980191855082537
+    },
+    "test": {
+      "mean": 0.43635477582846005,
+      "std": 0.18821615446465317
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.4838583638583637,
+      "std": 0.16178402376923415
+    },
+    "test": {
+      "mean": 0.46588693957115007,
+      "std": 0.15867393260396404
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 174.16666666666666,
+    "stopping_epoch_std": 96.35089228670611,
+    "stopping_epoch_range": [
+      51,
+      466
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

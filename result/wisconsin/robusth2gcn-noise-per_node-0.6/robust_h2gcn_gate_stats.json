@@ -1,0 +1,60 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 17:09:20",
+    "dataset": "Wisconsin",
+    "model": "RobustH2GCN"
+  },
+  "gate_statistics": {
+    "gate_mean": {
+      "mean": 1.7543703950632296e-28,
+      "std": 1.6549167996706076e-27
+    },
+    "gate_std": {
+      "mean": 1.7839830284322226e-27,
+      "std": 1.6828473771466113e-26
+    },
+    "gate_min": {
+      "mean": 0.0,
+      "std": 0.0
+    },
+    "gate_max": {
+      "mean": 2.724718113508831e-26,
+      "std": 2.5702506095932717e-25
+    },
+    "gate_range": [
+      0.0,
+      2.4520167461289236e-24
+    ],
+    "experiment_count": 90
+  },
+  "best_parameter_gate_stats": {
+    "gate_mean": {
+      "mean": 1.6114046719105944e-39,
+      "std": 4.834214015731782e-39
+    },
+    "gate_std": {
+      "mean": 1.4545094664431762e-38,
+      "std": 4.363528399329528e-38
+    },
+    "gate_min": {
+      "mean": 0.0,
+      "std": 0.0
+    },
+    "gate_max": {
+      "mean": 1.6913592646440015e-37,
+      "std": 5.074077793932003e-37
+    },
+    "gate_range": [
+      0.0,
+      1.6913592646440014e-36
+    ],
+    "experiment_count": 10,
+    "best_parameters": {
+      "DROPOUT": 0.5,
+      "HIDDEN_CHANNELS": 64,
+      "MAX_HOPS": 3,
+      "NUM_LAYERS": 1,
+      "TEMPERATURE": 2.0
+    }
+  }
+}

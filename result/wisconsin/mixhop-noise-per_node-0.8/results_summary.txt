@@ -1,0 +1,66 @@
+=== MixHop on Wisconsin Dataset - Grid Search Results ===
+    Date: 2025-07-03 17:52:29
+
+    EXPERIMENT SETTINGS:
+    - Dataset: Wisconsin
+    - Model: MixHop
+    - Number of runs: 10
+    - Number of epochs: 600
+    - Grid search combinations: 9
+    - Total experiments: 90
+
+    GRID SEARCH PARAMETERS:
+    - HIDDEN_CHANNELS: [64]
+- NUM_LAYERS: [1, 2, 3]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.6412 ± 0.0608 (max: 0.7059)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.6412 ± 0.0562 (max: 0.7255)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.6373 ± 0.0528 (max: 0.7451)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.6098 ± 0.0704 (max: 0.7255)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.6020 ± 0.0850 (max: 0.7451)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5961 ± 0.1117 (max: 0.7843)
+
+7. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5882 ± 0.0769 (max: 0.7255)
+
+8. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5745 ± 0.0953 (max: 0.7647)
+
+9. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5686 ± 0.0620 (max: 0.6471)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.5961 ± 0.1117
+- Best single run test accuracy: 0.7843
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 90/90 (100.0%)
+- Average stopping epoch: 117.2 ± 31.9
+- Stopping epoch range: [50, 213]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['noise']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5, achieving a final test accuracy of 63.7% ± 5.3%.

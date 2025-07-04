@@ -1,0 +1,66 @@
+=== MLP on Chameleon Dataset - Grid Search Results ===
+    Date: 2025-07-04 07:08:51
+
+    EXPERIMENT SETTINGS:
+    - Dataset: Chameleon
+    - Model: MLP
+    - Number of runs: 10
+    - Number of epochs: 600
+    - Grid search combinations: 9
+    - Total experiments: 90
+
+    GRID SEARCH PARAMETERS:
+    - HIDDEN_CHANNELS: [64]
+- NUM_LAYERS: [1, 2, 3]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2336 ± 0.0203 (max: 0.2610)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2322 ± 0.0171 (max: 0.2675)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2259 ± 0.0160 (max: 0.2522)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2246 ± 0.0174 (max: 0.2566)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2239 ± 0.0283 (max: 0.2588)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2224 ± 0.0234 (max: 0.2588)
+
+7. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2191 ± 0.0234 (max: 0.2566)
+
+8. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2129 ± 0.0198 (max: 0.2456)
+
+9. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2070 ± 0.0218 (max: 0.2368)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=2, TEMPERATURE=0.5
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.2191 ± 0.0234
+- Best single run test accuracy: 0.2566
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 90/90 (100.0%)
+- Average stopping epoch: 55.2 ± 8.9
+- Stopping epoch range: [50, 109]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['noise']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5, achieving a final test accuracy of 20.7% ± 2.2%.

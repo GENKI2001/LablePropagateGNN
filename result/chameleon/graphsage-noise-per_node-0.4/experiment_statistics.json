@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-04 17:56:04",
+    "dataset": "Chameleon",
+    "model": "GraphSAGE"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.2554335448186107,
+      "std": 0.07804714916473764
+    },
+    "val": {
+      "mean": 0.23738705738705737,
+      "std": 0.04304239034022715
+    },
+    "test": {
+      "mean": 0.2414961013645224,
+      "std": 0.04456766229993149
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.2992918192918193,
+      "std": 0.06065790532691413
+    },
+    "test": {
+      "mean": 0.2870370370370371,
+      "std": 0.057748949258699694
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 85.78888888888889,
+    "stopping_epoch_std": 43.04738847271676,
+    "stopping_epoch_range": [
+      50,
+      245
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

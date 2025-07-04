@@ -1,42 +1,42 @@
 {
   "experiment_info": {
-    "timestamp": "2025-07-01 23:44:30",
+    "timestamp": "2025-07-03 16:19:47",
     "dataset": "Texas",
     "model": "RobustH2GCN"
   },
-  "total_experiments": 720,
+  "total_experiments": 90,
   "final_results": {
     "train": {
       "mean": 1.0,
       "std": 0.0
     },
     "val": {
-      "mean": 0.8545524691358025,
-      "std": 0.062111801196011306
+      "mean": 0.8762345679012346,
+      "std": 0.059599876277120996
     },
     "test": {
-      "mean": 0.8607090643274853,
-      "std": 0.05704423529921973
+      "mean": 0.856140350877193,
+      "std": 0.07160818116476683
     }
   },
   "best_results": {
     "val": {
-      "mean": 0.8997685185185185,
-      "std": 0.051942195600623596
+      "mean": 0.9175925925925925,
+      "std": 0.047655960120213954
     },
     "test": {
-      "mean": 0.8464546783625733,
-      "std": 0.06087912006249881
+      "mean": 0.8423976608187133,
+      "std": 0.06956914012467112
     }
   },
   "early_stopping": {
-    "early_stopped_experiments": 720,
+    "early_stopped_experiments": 90,
     "early_stopping_rate": 1.0,
-    "average_stopping_epoch": 75.73055555555555,
-    "stopping_epoch_std": 22.826389691714823,
+    "average_stopping_epoch": 76.61111111111111,
+    "stopping_epoch_std": 27.93273445835527,
     "stopping_epoch_range": [
       52,
-      205
+      208
     ]
   }
 }

@@ -1,0 +1,66 @@
+=== MixHop on Cornell Dataset - Grid Search Results ===
+    Date: 2025-07-03 15:04:57
+
+    EXPERIMENT SETTINGS:
+    - Dataset: Cornell
+    - Model: MixHop
+    - Number of runs: 10
+    - Number of epochs: 600
+    - Grid search combinations: 9
+    - Total experiments: 90
+
+    GRID SEARCH PARAMETERS:
+    - HIDDEN_CHANNELS: [64]
+- NUM_LAYERS: [1, 2, 3]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4658 ± 0.0697 (max: 0.5526)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4526 ± 0.0437 (max: 0.5263)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4447 ± 0.0720 (max: 0.5526)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4447 ± 0.0988 (max: 0.5789)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4342 ± 0.0428 (max: 0.5263)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4289 ± 0.0540 (max: 0.5000)
+
+7. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4079 ± 0.0503 (max: 0.5000)
+
+8. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4053 ± 0.0529 (max: 0.4737)
+
+9. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4053 ± 0.0727 (max: 0.5000)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=3, TEMPERATURE=0.5
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.4053 ± 0.0727
+- Best single run test accuracy: 0.5000
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 90/90 (100.0%)
+- Average stopping epoch: 75.6 ± 27.0
+- Stopping epoch range: [50, 163]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['noise']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=3, TEMPERATURE=0.5, achieving a final test accuracy of 40.5% ± 7.3%.

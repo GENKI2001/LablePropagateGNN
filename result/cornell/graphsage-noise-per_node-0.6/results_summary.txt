@@ -1,0 +1,66 @@
+=== GraphSAGE on Cornell Dataset - Grid Search Results ===
+    Date: 2025-07-03 14:59:17
+
+    EXPERIMENT SETTINGS:
+    - Dataset: Cornell
+    - Model: GraphSAGE
+    - Number of runs: 10
+    - Number of epochs: 600
+    - Grid search combinations: 9
+    - Total experiments: 90
+
+    GRID SEARCH PARAMETERS:
+    - HIDDEN_CHANNELS: [64]
+- NUM_LAYERS: [1, 2, 3]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5211 ± 0.1134 (max: 0.7105)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5158 ± 0.0782 (max: 0.6842)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5026 ± 0.0628 (max: 0.6316)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=3, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5026 ± 0.0758 (max: 0.6579)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4974 ± 0.0594 (max: 0.6053)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4737 ± 0.1053 (max: 0.6053)
+
+7. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4684 ± 0.0714 (max: 0.6053)
+
+8. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4632 ± 0.0567 (max: 0.5526)
+
+9. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.4526 ± 0.0642 (max: 0.5789)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=3, TEMPERATURE=0.5
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=3, TEMPERATURE=0.5
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.5158 ± 0.0782
+- Best single run test accuracy: 0.6842
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 90/90 (100.0%)
+- Average stopping epoch: 79.0 ± 29.0
+- Stopping epoch range: [50, 168]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['noise']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=3, TEMPERATURE=0.5, achieving a final test accuracy of 52.1% ± 11.3%.

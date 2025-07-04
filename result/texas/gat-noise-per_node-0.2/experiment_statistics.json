@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 16:37:39",
+    "dataset": "Texas",
+    "model": "GAT"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.7217125382262999,
+      "std": 0.21924280881128283
+    },
+    "val": {
+      "mean": 0.43858024691358033,
+      "std": 0.11434300044048727
+    },
+    "test": {
+      "mean": 0.45643274853801175,
+      "std": 0.11964353482289408
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.5858024691358024,
+      "std": 0.06594834778462628
+    },
+    "test": {
+      "mean": 0.5461988304093568,
+      "std": 0.08624293665557783
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 64.05555555555556,
+    "stopping_epoch_std": 17.839009134858927,
+    "stopping_epoch_range": [
+      50,
+      123
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

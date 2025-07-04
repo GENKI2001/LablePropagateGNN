@@ -1,6 +1,6 @@
 {
   "experiment_info": {
-    "timestamp": "2025-07-02 15:17:30",
+    "timestamp": "2025-07-04 09:05:38",
     "dataset": "Chameleon",
     "model": "H2GCN"
   },
@@ -13,6 +13,8 @@
   "disable_original_features": false,
   "use_feature_modification": false,
   "feature_modifications": [],
+  "use_edge_modification": false,
+  "edge_modifications": [],
   "use_similarity_based_edges": false,
   "similarity_edge_mode": "add",
   "similarity_feature_type": "raw",
@@ -38,14 +40,12 @@
   "early_stopping_min_delta": 0.001,
   "grid_search_parameters": {
     "HIDDEN_CHANNELS": [
-      16,
-      32,
-      64,
-      128
+      64
     ],
     "NUM_LAYERS": [
       1,
-      2
+      2,
+      3
     ],
     "MAX_HOPS": [
       2,
@@ -53,9 +53,7 @@
       4
     ],
     "TEMPERATURE": [
-      0.5,
-      1.0,
-      2.5
+      0.5
     ],
     "DROPOUT": [
       0.5

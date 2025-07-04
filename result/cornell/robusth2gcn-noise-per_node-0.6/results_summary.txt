@@ -1,0 +1,74 @@
+=== RobustH2GCN on Cornell Dataset - Grid Search Results ===
+    Date: 2025-07-03 10:38:24
+
+    EXPERIMENT SETTINGS:
+    - Dataset: Cornell
+    - Model: RobustH2GCN
+    - Number of runs: 10
+    - Number of epochs: 600
+    - Grid search combinations: 9
+    - Total experiments: 90
+
+    GRID SEARCH PARAMETERS:
+    - HIDDEN_CHANNELS: [64]
+- NUM_LAYERS: [1]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5, 1.0, 2.0]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=1.0
+   Final Test Accuracy: 0.5868 ± 0.0666 (max: 0.6579)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5368 ± 0.0850 (max: 0.7368)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=1.0
+   Final Test Accuracy: 0.5316 ± 0.0621 (max: 0.6316)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=2.0
+   Final Test Accuracy: 0.5289 ± 0.0570 (max: 0.6053)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=2.0
+   Final Test Accuracy: 0.5263 ± 0.0539 (max: 0.6053)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5211 ± 0.0879 (max: 0.6316)
+
+7. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=2.0
+   Final Test Accuracy: 0.5158 ± 0.0708 (max: 0.6053)
+
+8. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5053 ± 0.0497 (max: 0.5789)
+
+9. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=1.0
+   Final Test Accuracy: 0.4526 ± 0.0969 (max: 0.6053)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=1.0
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=1.0
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.5158 ± 0.0708
+- Best single run test accuracy: 0.6053
+
+ROBUST H2GCN GATE STATISTICS:
+- Gate mean: 0.0000 ± 0.0000
+- Gate standard deviation: 0.0000 ± 0.0000
+- Gate minimum: 0.0000 ± 0.0000
+- Gate maximum: 0.0000 ± 0.0000
+- Gate range: [0.0000, 0.0000]
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 90/90 (100.0%)
+- Average stopping epoch: 68.3 ± 16.6
+- Stopping epoch range: [50, 125]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['noise']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=1.0, achieving a final test accuracy of 45.3% ± 9.7%.
+The RobustH2GCN model shows good performance with gate values indicating effective feature selection between node features and label features.

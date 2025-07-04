@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 14:55:31",
+    "dataset": "Cornell",
+    "model": "GAT"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.5449541284403671,
+      "std": 0.2804659831257806
+    },
+    "val": {
+      "mean": 0.3641975308641976,
+      "std": 0.13117102395257715
+    },
+    "test": {
+      "mean": 0.3435672514619883,
+      "std": 0.1285236570692571
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.48580246913580255,
+      "std": 0.06718477230012741
+    },
+    "test": {
+      "mean": 0.4157894736842105,
+      "std": 0.08286572406048802
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 65.44444444444444,
+    "stopping_epoch_std": 19.070111058996723,
+    "stopping_epoch_range": [
+      50,
+      137
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

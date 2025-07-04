@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 16:49:23",
+    "dataset": "Texas",
+    "model": "MixHop"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.999388379204893,
+      "std": 0.00228847546591677
+    },
+    "val": {
+      "mean": 0.5617283950617282,
+      "std": 0.08027065175960958
+    },
+    "test": {
+      "mean": 0.5660818713450293,
+      "std": 0.06752043845973207
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.6104938271604938,
+      "std": 0.072904867096754
+    },
+    "test": {
+      "mean": 0.5558479532163743,
+      "std": 0.06916240047114934
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 72.96666666666667,
+    "stopping_epoch_std": 31.621529234227605,
+    "stopping_epoch_range": [
+      50,
+      188
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

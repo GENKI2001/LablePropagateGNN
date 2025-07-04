@@ -1,0 +1,42 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 14:57:29",
+    "dataset": "Cornell",
+    "model": "GraphSAGE"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "val": {
+      "mean": 0.6969135802469135,
+      "std": 0.07982796622383807
+    },
+    "test": {
+      "mean": 0.7052631578947369,
+      "std": 0.07983901931917721
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.7490740740740741,
+      "std": 0.07389445815825474
+    },
+    "test": {
+      "mean": 0.6824561403508772,
+      "std": 0.08393595588705743
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 85.13333333333334,
+    "stopping_epoch_std": 30.923992842667218,
+    "stopping_epoch_range": [
+      53,
+      192
+    ]
+  }
+}

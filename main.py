@@ -11,7 +11,16 @@ from utils.feature_noise import add_feature_noise, add_feature_noise_uniform, ad
 from utils.edge_noise import apply_edge_modifications, print_edge_modification_info
 from models import ModelFactory
 
-def main():
+def main(dataset_name='Cornell', model_name='RobustH2GCN', calc_neighbor_label_features=True, 
+         use_feature_modification=False, feature_modifications=None, use_edge_modification=False, 
+         edge_modifications=None, num_runs=10, num_epochs=600, grid_search_params=None,
+         use_similarity_based_edges=False, similarity_edge_mode='add', similarity_feature_type='raw',
+         similarity_raw_threshold=0.165, similarity_label_threshold=0.9999997, use_early_stopping=True,
+         early_stopping_patience=50, early_stopping_min_delta=0.001, train_ratio=0.6, val_ratio=0.2,
+         test_ratio=0.2, learning_rate=0.01, weight_decay=5e-4, combine_neighbor_label_features=False,
+         disable_original_features=False, use_pca=False, pca_components=128, mixhop_powers=None,
+         graphsage_aggr='mean', gat_num_heads=8, gat_concat=True, display_progress_every=100,
+         show_feature_details=False):
 
     # ============================================================================
     # ハイパーパラメータなどの設定
@@ -22,20 +31,20 @@ def main():
     # WebKB: 'Cornell', 'Texas', 'Wisconsin'
     # WikipediaNetwork: 'Chameleon', 'Squirrel'
     # Actor: 'Actor'
-    DATASET_NAME = 'Cornell'  # ここを変更してデータセットを切り替え
+    DATASET_NAME = dataset_name  # 引数から取得
 
     # サポートされているモデル:
     # - 'MLP', 'GCN', 'GAT', 'GraphSAGE', 'H2GCN', 'RobustH2GCN', 'MixHop', 'RGCN'
-    MODEL_NAME = 'RobustH2GCN'
+    MODEL_NAME = model_name  # 引数から取得
 
     # 実験設定
-    NUM_RUNS = 10  # 実験回数（テスト用に減らす）
-    NUM_EPOCHS = 600  # エポック数（テスト用に減らす）
+    NUM_RUNS = num_runs  # 引数から取得
+    NUM_EPOCHS = num_epochs  # 引数から取得
 
     # 特徴量作成設定
-    CALC_NEIGHBOR_LABEL_FEATURES = True  # True: 隣接ノードのラベル特徴量を計算, False: 計算しない
-    COMBINE_NEIGHBOR_LABEL_FEATURES = False  # True: 元の特徴量にラベル分布ベクトルを結合, False: スキップ
-    DISABLE_ORIGINAL_FEATURES = False  # True: 元のノード特徴量を無効化（data.xを空にする）
+    CALC_NEIGHBOR_LABEL_FEATURES = calc_neighbor_label_features  # 引数から取得
+    COMBINE_NEIGHBOR_LABEL_FEATURES = combine_neighbor_label_features  # 引数から取得
+    DISABLE_ORIGINAL_FEATURES = disable_original_features  # 引数から取得
 
     # 簡易実験のため、組み合わせ回数は全部で 9回(3*3*1) に統一
     # HIDDEN_CHANNELSは 64 に固定
@@ -45,66 +54,78 @@ def main():
     # DROPOUTは 0.5
 
     # Grid Search対象パラメータの設定
-    GRID_SEARCH_PARAMS = {
-        'HIDDEN_CHANNELS': [64],  # 隠れ層次元
-        'NUM_LAYERS': [1] if MODEL_NAME == 'RobustH2GCN' else [1, 2, 3],                   # レイヤー数
-        'MAX_HOPS': [2, 3, 4],     # 最大hop数
-        'TEMPERATURE': [0.5, 1.0, 2.0] if MODEL_NAME == 'RobustH2GCN' else [0.5],          # 温度パラメータ
-        'DROPOUT': [0.5]          # ドロップアウト率
-    }
+    if grid_search_params is None:
+        GRID_SEARCH_PARAMS = {
+            'HIDDEN_CHANNELS': [64],  # 隠れ層次元
+            'NUM_LAYERS': [1] if MODEL_NAME == 'RobustH2GCN' else [1, 2, 3],                   # レイヤー数
+            'MAX_HOPS': [2, 3, 4],     # 最大hop数
+            'TEMPERATURE': [0.5, 1.0, 2.0] if MODEL_NAME == 'RobustH2GCN' else [0.5],          # 温度パラメータ
+            'DROPOUT': [0.5]          # ドロップアウト率
+        }
+    else:
+        GRID_SEARCH_PARAMS = grid_search_params
 
     # 特徴量ノイズ設定（統合版）
-    USE_FEATURE_MODIFICATION = False  # True: 特徴量を改変, False: スキップ
-    FEATURE_MODIFICATIONS = [
-        # {'type': 'noise', 'percentage': 0.6, 'method': 'per_node'},  # ノイズ追加（ランダムに0と1を入れ替え）
-        # {'type': 'missingness', 'percentage': 0.3},  # 欠損追加（0にマスキング）
-    ]
+    USE_FEATURE_MODIFICATION = use_feature_modification  # 引数から取得
+    if feature_modifications is None:
+        FEATURE_MODIFICATIONS = [
+            # {'type': 'noise', 'percentage': 0.6, 'method': 'per_node'},  # ノイズ追加（ランダムに0と1を入れ替え）
+            # {'type': 'missingness', 'percentage': 0.3},  # 欠損追加（0にマスキング）
+        ]
+    else:
+        FEATURE_MODIFICATIONS = feature_modifications
 
     # エッジノイズ設定（統合版）
-    USE_EDGE_MODIFICATION = False  # True: エッジを改変, False: スキップ
-    EDGE_MODIFICATIONS = [
-        # {'type': 'add', 'percentage': 1.8},  # エッジ追加（元のエッジ数の10%を追加）
-        # {'type': 'remove', 'percentage': 1.8},  # エッジ削除（元のエッジ数の10%を削除）
-    ]
+    USE_EDGE_MODIFICATION = use_edge_modification  # 引数から取得
+    if edge_modifications is None:
+        EDGE_MODIFICATIONS = [
+            # {'type': 'add', 'percentage': 1.8},  # エッジ追加（元のエッジ数の10%を追加）
+            # {'type': 'remove', 'percentage': 1.8},  # エッジ削除（元のエッジ数の10%を削除）
+        ]
+    else:
+        EDGE_MODIFICATIONS = edge_modifications
 
     # 類似度ベースエッジ作成設定
-    USE_SIMILARITY_BASED_EDGES = False  # True: 類似度ベースエッジ作成を実行, False: スキップ
-    SIMILARITY_EDGE_MODE = 'add'  # 'replace': 元のエッジを置き換え, 'add': 元のエッジに追加
-    SIMILARITY_FEATURE_TYPE = 'raw'  # 'raw': 生の特徴量のみ, 'label': ラベル分布特徴量のみ
-    SIMILARITY_RAW_THRESHOLD = 0.165  # 生の特徴量の類似度閾値 (0.0-1.0)
-    SIMILARITY_LABEL_THRESHOLD = 0.9999997  # ラベル分布特徴量の類似度閾値 (0.0-1.0)
+    USE_SIMILARITY_BASED_EDGES = use_similarity_based_edges  # 引数から取得
+    SIMILARITY_EDGE_MODE = similarity_edge_mode  # 引数から取得
+    SIMILARITY_FEATURE_TYPE = similarity_feature_type  # 引数から取得
+    SIMILARITY_RAW_THRESHOLD = similarity_raw_threshold  # 引数から取得
+    SIMILARITY_LABEL_THRESHOLD = similarity_label_threshold  # 引数から取得
 
     # MixHopモデル固有の設定
-    MIXHOP_POWERS = [0, 1, 2]  # 隣接行列のべき乗のリスト [0, 1, 2] または [0, 1, 2, 3] など
+    if mixhop_powers is None:
+        MIXHOP_POWERS = [0, 1, 2]  # 隣接行列のべき乗のリスト [0, 1, 2] または [0, 1, 2, 3] など
+    else:
+        MIXHOP_POWERS = mixhop_powers
 
     # GraphSAGEモデル固有の設定
-    GRAPHSAGE_AGGR = 'mean'  # 集約関数 ('mean', 'max', 'lstm')
+    GRAPHSAGE_AGGR = graphsage_aggr  # 引数から取得
 
     # GATモデル固有の設定
-    GAT_NUM_HEADS = 8  # アテンションヘッド数
-    GAT_CONCAT = True  # アテンションヘッドの出力を結合するかどうか
+    GAT_NUM_HEADS = gat_num_heads  # 引数から取得
+    GAT_CONCAT = gat_concat  # 引数から取得
 
     # PCA設定
-    USE_PCA = False  # True: PCA圧縮, False: 生の特徴量
-    PCA_COMPONENTS = 128  # PCAで圧縮する次元数結合後の特徴量の形状:
+    USE_PCA = use_pca  # 引数から取得
+    PCA_COMPONENTS = pca_components  # 引数から取得
 
     # データ分割設定
-    TRAIN_RATIO = 0.6  # 訓練データの割合
-    VAL_RATIO = 0.2    # 検証データの割合
-    TEST_RATIO = 0.2   # テストデータの割合
+    TRAIN_RATIO = train_ratio  # 引数から取得
+    VAL_RATIO = val_ratio  # 引数から取得
+    TEST_RATIO = test_ratio  # 引数から取得
 
     # 最適化設定
-    LEARNING_RATE = 0.01  # 学習率
-    WEIGHT_DECAY = 5e-4   # 重み減衰
+    LEARNING_RATE = learning_rate  # 引数から取得
+    WEIGHT_DECAY = weight_decay  # 引数から取得
 
     # Early Stopping設定
-    USE_EARLY_STOPPING = True  # True: Early stoppingを使用, False: 使用しない
-    EARLY_STOPPING_PATIENCE = 50  # 何エポック改善がなければ停止するか
-    EARLY_STOPPING_MIN_DELTA = 0.001  # 改善とみなす最小変化量
+    USE_EARLY_STOPPING = use_early_stopping  # 引数から取得
+    EARLY_STOPPING_PATIENCE = early_stopping_patience  # 引数から取得
+    EARLY_STOPPING_MIN_DELTA = early_stopping_min_delta  # 引数から取得
 
     # 表示設定
-    DISPLAY_PROGRESS_EVERY = 100  # 何エポックごとに進捗を表示するか
-    SHOW_FEATURE_DETAILS = False  # 特徴量の詳細を表示するか
+    DISPLAY_PROGRESS_EVERY = display_progress_every  # 引数から取得
+    SHOW_FEATURE_DETAILS = show_feature_details  # 引数から取得
 
     # デバイス設定
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -1830,4 +1851,91 @@ def main():
             SIMILARITY_RAW_THRESHOLD, SIMILARITY_LABEL_THRESHOLD,
             MIXHOP_POWERS, GRAPHSAGE_AGGR, GAT_NUM_HEADS, GAT_CONCAT
         )
+            
+def run_multiple_experiments():
+    """
+    複数の実験を連続実行する関数
+    異なるデータセット、モデル、設定で実験を実行できます
+    """
+    
+    # 実験設定のリスト
+    experiments = [
+        # 実験: CornellデータセットでRobustH2GCN
+        {
+            'dataset_name': 'Cornell',
+            'model_name': 'RobustH2GCN',
+            'calc_neighbor_label_features': True,
+            'use_feature_modification': False,
+            'feature_modifications': None,
+        },
+        {
+            'dataset_name': 'Cornell',
+            'model_name': 'RobustH2GCN',
+            'calc_neighbor_label_features': True,
+            'use_feature_modification': True,
+            'feature_modifications': [
+                {'type': 'noise', 'percentage': 0.2, 'method': 'per_node'}
+            ],
+        },
+        {
+            'dataset_name': 'Cornell',
+            'model_name': 'RobustH2GCN',
+            'calc_neighbor_label_features': True,
+            'use_feature_modification': True,
+            'feature_modifications': [
+                {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'}
+            ],
+        },
+        {
+            'dataset_name': 'Cornell',
+            'model_name': 'RobustH2GCN',
+            'calc_neighbor_label_features': True,
+            'use_feature_modification': True,
+            'feature_modifications': [
+                {'type': 'noise', 'percentage': 0.6, 'method': 'per_node'}
+            ],
+        },
+        {
+            'dataset_name': 'Cornell',
+            'model_name': 'RobustH2GCN',
+            'calc_neighbor_label_features': True,
+            'use_feature_modification': True,
+            'feature_modifications': [
+                {'type': 'noise', 'percentage': 0.8, 'method': 'per_node'}
+            ],
+        }
+    ]
+    
+    print("=== 複数実験実行開始 ===")
+    print(f"実行予定実験数: {len(experiments)}")
+    
+    for i, exp_config in enumerate(experiments):
+        print(f"\n{'='*80}")
+        print(f"=== 実験 {i+1}/{len(experiments)} ===")
+        print(f"データセット: {exp_config['dataset_name']}")
+        print(f"モデル: {exp_config['model_name']}")
+        print(f"{'='*80}")
+        
+        try:
+            # 実験実行
+            main(**exp_config)
+            print(f"実験 {i+1} 完了")
+        except Exception as e:
+            print(f"実験 {i+1} でエラーが発生しました: {e}")
+            continue
+    
+    print(f"\n=== 全実験完了 ===")
+
+def run_single_experiment():
+    """
+    単一実験を実行する関数（元の動作を維持）
+    """
+    main()
+
+if __name__ == "__main__":
+    # 単一実験を実行する場合は以下をコメントアウト
+    # run_single_experiment()
+    
+    # 複数実験を実行する場合は以下をコメントアウト
+    run_multiple_experiments()
             

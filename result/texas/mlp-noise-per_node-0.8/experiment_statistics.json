@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 16:30:59",
+    "dataset": "Texas",
+    "model": "MLP"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.6916411824668706,
+      "std": 0.1556433393855648
+    },
+    "val": {
+      "mean": 0.5570987654320987,
+      "std": 0.0801192003663123
+    },
+    "test": {
+      "mean": 0.5637426900584795,
+      "std": 0.07566040196992621
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.5759259259259258,
+      "std": 0.0820685918746679
+    },
+    "test": {
+      "mean": 0.5660818713450293,
+      "std": 0.07659702610541727
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 60.955555555555556,
+    "stopping_epoch_std": 22.631792343766286,
+    "stopping_epoch_range": [
+      50,
+      147
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

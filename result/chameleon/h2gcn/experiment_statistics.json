@@ -1,42 +1,42 @@
 {
   "experiment_info": {
-    "timestamp": "2025-07-02 15:17:30",
+    "timestamp": "2025-07-04 09:05:38",
     "dataset": "Chameleon",
     "model": "H2GCN"
   },
-  "total_experiments": 720,
+  "total_experiments": 90,
   "final_results": {
     "train": {
-      "mean": 0.9844344802342607,
-      "std": 0.00946017578015285
+      "mean": 0.9894908085244835,
+      "std": 0.00334462763332164
     },
     "val": {
-      "mean": 0.5272893772893773,
-      "std": 0.030973398157408034
+      "mean": 0.5402686202686202,
+      "std": 0.027687225104399707
     },
     "test": {
-      "mean": 0.5269401803118908,
-      "std": 0.0298081444477234
+      "mean": 0.5412768031189084,
+      "std": 0.029668958585906402
     }
   },
   "best_results": {
     "val": {
-      "mean": 0.5595909645909646,
-      "std": 0.027859624619555923
+      "mean": 0.5739926739926738,
+      "std": 0.023548869099553737
     },
     "test": {
-      "mean": 0.5394767300194931,
-      "std": 0.029223885331405873
+      "mean": 0.5530458089668616,
+      "std": 0.031095866499215894
     }
   },
   "early_stopping": {
-    "early_stopped_experiments": 720,
+    "early_stopped_experiments": 90,
     "early_stopping_rate": 1.0,
-    "average_stopping_epoch": 77.43055555555556,
-    "stopping_epoch_std": 27.09116624621847,
+    "average_stopping_epoch": 78.86666666666666,
+    "stopping_epoch_std": 33.60529058876824,
     "stopping_epoch_range": [
       53,
-      225
+      216
     ]
   }
 }

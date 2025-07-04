@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 15:03:36",
+    "dataset": "Cornell",
+    "model": "MixHop"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.9998980632008154,
+      "std": 0.0009616698401688633
+    },
+    "val": {
+      "mean": 0.48580246913580244,
+      "std": 0.08844841137852534
+    },
+    "test": {
+      "mean": 0.4807017543859649,
+      "std": 0.07960737757570828
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.5549382716049382,
+      "std": 0.08061170646011549
+    },
+    "test": {
+      "mean": 0.4745614035087719,
+      "std": 0.0827030643965052
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 76.5111111111111,
+    "stopping_epoch_std": 25.41095321332666,
+    "stopping_epoch_range": [
+      50,
+      174
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

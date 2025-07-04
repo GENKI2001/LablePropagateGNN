@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 17:51:54",
+    "dataset": "Wisconsin",
+    "model": "MixHop"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.9263703703703704,
+      "std": 0.10730784657656617
+    },
+    "val": {
+      "mean": 0.49244444444444435,
+      "std": 0.066571784331921
+    },
+    "test": {
+      "mean": 0.5041394335511983,
+      "std": 0.0810164634220598
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.546,
+      "std": 0.06575712889109439
+    },
+    "test": {
+      "mean": 0.4956427015250546,
+      "std": 0.07761160794655465
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 92.96666666666667,
+    "stopping_epoch_std": 38.756633840759015,
+    "stopping_epoch_range": [
+      50,
+      242
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

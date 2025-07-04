@@ -1,0 +1,42 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 17:26:45",
+    "dataset": "Wisconsin",
+    "model": "GCN"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.9171851851851852,
+      "std": 0.07401686679835022
+    },
+    "val": {
+      "mean": 0.4715555555555555,
+      "std": 0.07149065379647129
+    },
+    "test": {
+      "mean": 0.44901960784313727,
+      "std": 0.06004896403003075
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.5444444444444445,
+      "std": 0.0699700112129175
+    },
+    "test": {
+      "mean": 0.46710239651416124,
+      "std": 0.06617644817414468
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 65.61111111111111,
+    "stopping_epoch_std": 17.48249565482536,
+    "stopping_epoch_range": [
+      50,
+      124
+    ]
+  }
+}

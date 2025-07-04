@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-03 16:57:14",
+    "dataset": "Texas",
+    "model": "RGCN"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.8349643221202855,
+      "std": 0.21742020060407574
+    },
+    "val": {
+      "mean": 0.5583333333333333,
+      "std": 0.12136695708307486
+    },
+    "test": {
+      "mean": 0.5400584795321639,
+      "std": 0.11990479049604032
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.6472222222222223,
+      "std": 0.09057524590895552
+    },
+    "test": {
+      "mean": 0.5634502923976608,
+      "std": 0.09584267242980223
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 71.68888888888888,
+    "stopping_epoch_std": 19.378478580599804,
+    "stopping_epoch_range": [
+      50,
+      126
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}
