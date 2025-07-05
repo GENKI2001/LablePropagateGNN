@@ -1,0 +1,60 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 10:35:34",
+    "dataset": "Cora",
+    "model": "RobustH2GCN"
+  },
+  "gate_statistics": {
+    "gate_mean": {
+      "mean": 0.45277468071629606,
+      "std": 0.30585352026983575
+    },
+    "gate_std": {
+      "mean": 0.25821771745880445,
+      "std": 0.0516727671914775
+    },
+    "gate_min": {
+      "mean": 0.029075598673634996,
+      "std": 0.059696421407943415
+    },
+    "gate_max": {
+      "mean": 0.9989387124776841,
+      "std": 0.0033182924746543263
+    },
+    "gate_range": [
+      4.852275807716577e-13,
+      1.0
+    ],
+    "experiment_count": 60
+  },
+  "best_parameter_gate_stats": {
+    "gate_mean": {
+      "mean": 0.7026759028434754,
+      "std": 0.05807037782773287
+    },
+    "gate_std": {
+      "mean": 0.260324190557003,
+      "std": 0.04669904678572
+    },
+    "gate_min": {
+      "mean": 0.08261724242474884,
+      "std": 0.1074083075057172
+    },
+    "gate_max": {
+      "mean": 0.9999412178993226,
+      "std": 0.00014262939359080054
+    },
+    "gate_range": [
+      0.0025882734917104244,
+      1.0
+    ],
+    "experiment_count": 10,
+    "best_parameters": {
+      "DROPOUT": 0.5,
+      "HIDDEN_CHANNELS": 64,
+      "MAX_HOPS": 4,
+      "NUM_LAYERS": 1,
+      "TEMPERATURE": 2.0
+    }
+  }
+}

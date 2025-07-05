@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 12:05:12",
+    "dataset": "Cornell",
+    "model": "MLP"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.9974006116207953,
+      "std": 0.004134099643607245
+    },
+    "val": {
+      "mean": 0.5203703703703703,
+      "std": 0.07381900528886944
+    },
+    "test": {
+      "mean": 0.531140350877193,
+      "std": 0.07325874448963902
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.6162037037037037,
+      "std": 0.06504423681990759
+    },
+    "test": {
+      "mean": 0.5833333333333334,
+      "std": 0.07926349960707002
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 64.08333333333333,
+    "stopping_epoch_std": 6.253776636738973,
+    "stopping_epoch_range": [
+      51,
+      85
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "missingness"
+    ]
+  }
+}

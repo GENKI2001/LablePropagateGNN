@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 10:50:25",
+    "dataset": "Cora",
+    "model": "GCN"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.9293821839080462,
+      "std": 0.039325151561710146
+    },
+    "val": {
+      "mean": 0.8057917436845348,
+      "std": 0.04740522296962862
+    },
+    "test": {
+      "mean": 0.804941682013505,
+      "std": 0.04573661724985662
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.8153419593345654,
+      "std": 0.04901381306378716
+    },
+    "test": {
+      "mean": 0.803437691835482,
+      "std": 0.04862234982680035
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 126.96666666666667,
+    "stopping_epoch_std": 54.16086122735576,
+    "stopping_epoch_range": [
+      69,
+      266
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "missingness"
+    ]
+  }
+}

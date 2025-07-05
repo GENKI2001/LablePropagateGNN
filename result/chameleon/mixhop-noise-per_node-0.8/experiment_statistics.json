@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 06:43:19",
+    "dataset": "Chameleon",
+    "model": "MixHop"
+  },
+  "total_experiments": 90,
+  "final_results": {
+    "train": {
+      "mean": 0.4080120383927119,
+      "std": 0.27631938712685505
+    },
+    "val": {
+      "mean": 0.22366300366300365,
+      "std": 0.027767500681750552
+    },
+    "test": {
+      "mean": 0.2243908382066277,
+      "std": 0.03258599060663528
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.28346764346764347,
+      "std": 0.039895444639730666
+    },
+    "test": {
+      "mean": 0.2561647173489279,
+      "std": 0.04382661334360701
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 90,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 97.45555555555555,
+    "stopping_epoch_std": 36.14512756809111,
+    "stopping_epoch_range": [
+      50,
+      258
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

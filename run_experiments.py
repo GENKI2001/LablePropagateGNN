@@ -43,181 +43,32 @@ def run_multiple_experiments_parallel(max_workers=None):
     # Actor: 'Actor'
 
     # モデル選択
-    # MLP, GCN, GAT, GraphSAGE, H2GCN, RobustH2GCN, MixHop, RGCN
-    experiments = [
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GAT',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': False,
-            'feature_modifications': None,
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GAT',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.2, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GAT',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GAT',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.6, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GAT',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.8, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GraphSAGE',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': False,
-            'feature_modifications': None,
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GraphSAGE',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.2, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GraphSAGE',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GraphSAGE',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.6, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'GraphSAGE',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.8, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'MixHop',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': False,
-            'feature_modifications': None,
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'MixHop',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.2, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'MixHop',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'MixHop',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.6, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'MixHop',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.8, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'RGCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': False,
-            'feature_modifications': None,
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'RGCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.2, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'RGCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'RGCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.6, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Chameleon',
-            'model_name': 'RGCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.8, 'method': 'per_node'}
-            ],
-        },
-    ]
+    # MLP, GCN, GAT, GraphSAGE, H2GCN, RobustH2GCN, RGCN
+    
+    # 実験設定を動的に生成
+    dataset_name = 'Squirrel'
+    models = ['MLP', 'GCN', 'GAT', 'GraphSAGE', 'H2GCN', 'RGCN', 'RobustH2GCN']
+    percentages = [0.2, 0.4, 0.6, 0.8, 1.0]
+    
+    experiments = []
+    for model_name in models:
+        for percentage in percentages:
+            experiments.append({
+                'dataset_name': dataset_name,
+                'model_name': model_name,
+                'calc_neighbor_label_features': model_name == 'RobustH2GCN' if True else False,
+                'use_feature_modification': False,
+                'feature_modifications': None,
+            })
+            experiments.append({
+                'dataset_name': dataset_name,
+                'model_name': model_name,
+                'calc_neighbor_label_features': model_name == 'RobustH2GCN' if True else False,
+                'use_feature_modification': True,
+                'feature_modifications': [
+                    {'type': 'missingness', 'percentage': percentage, 'method': 'per_node'}
+                ],
+            })
     
     print("=== 並列実験実行開始 ===")
     print(f"実行予定実験数: {len(experiments)}")
@@ -262,102 +113,6 @@ def run_multiple_experiments_parallel(max_workers=None):
     print(f"平均実行時間: {execution_time/len(experiments):.2f}秒/実験")
     print(f"{'='*80}")
 
-def run_multiple_experiments_sequential():
-    """
-    複数の実験を順次実行する関数（比較用）
-    """
-    
-    # データセット選択
-    # Planetoid: 'Cora', 'Citeseer', 'Pubmed'
-    # WebKB: 'Cornell', 'Texas', 'Wisconsin'
-    # WikipediaNetwork: 'Chameleon', 'Squirrel'
-    # Actor: 'Actor'
-
-    # モデル選択
-    # MLP, GCN, GAT, GraphSAGE, H2GCN, RobustH2GCN, MixHop, RGCN
-    experiments = [
-        {
-            'dataset_name': 'Wisconsin',
-            'model_name': 'H2GCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': False,
-            'feature_modifications': None,
-        },
-        {
-            'dataset_name': 'Wisconsin',
-            'model_name': 'H2GCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.2, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Wisconsin',
-            'model_name': 'H2GCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.4, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Wisconsin',
-            'model_name': 'H2GCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.6, 'method': 'per_node'}
-            ],
-        },
-        {
-            'dataset_name': 'Wisconsin',
-            'model_name': 'H2GCN',
-            'calc_neighbor_label_features': False,
-            'use_feature_modification': True,
-            'feature_modifications': [
-                {'type': 'noise', 'percentage': 0.8, 'method': 'per_node'}
-            ],
-        }
-    ]
-    
-    print("=== 順次実験実行開始 ===")
-    print(f"実行予定実験数: {len(experiments)}")
-    
-    # 実験の開始時刻を記録
-    start_time = time.time()
-    
-    successful_experiments = 0
-    for i, exp_config in enumerate(experiments):
-        print(f"\n{'='*80}")
-        print(f"=== 実験 {i+1}/{len(experiments)} ===")
-        print(f"データセット: {exp_config['dataset_name']}")
-        print(f"モデル: {exp_config['model_name']}")
-        print(f"{'='*80}")
-        
-        try:
-            # 実験実行
-            main(**exp_config)
-            print(f"実験 {i+1} 完了")
-            successful_experiments += 1
-        except Exception as e:
-            print(f"実験 {i+1} でエラーが発生しました: {e}")
-            continue
-    
-    # 実行時間を計算
-    end_time = time.time()
-    execution_time = end_time - start_time
-    
-    print(f"\n{'='*80}")
-    print(f"=== 全実験完了 ===")
-    print(f"成功した実験数: {successful_experiments}/{len(experiments)}")
-    print(f"総実行時間: {execution_time:.2f}秒")
-    print(f"平均実行時間: {execution_time/len(experiments):.2f}秒/実験")
-    print(f"{'='*80}")
-
 if __name__ == "__main__":
     # 並列実行（推奨）
     run_multiple_experiments_parallel()
-    
-    # 順次実行（比較用）
-    # run_multiple_experiments_sequential()

@@ -1,0 +1,433 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 21:01:27",
+    "dataset": "Chameleon",
+    "model": "RGCN"
+  },
+  "total_combinations": 6,
+  "total_experiments": 60,
+  "best_combination_by_val": {
+    "parameters": {
+      "DROPOUT": 0.5,
+      "HIDDEN_CHANNELS": 64,
+      "MAX_HOPS": 3,
+      "NUM_LAYERS": 2,
+      "TEMPERATURE": 0.5
+    },
+    "final_test_accuracy": {
+      "mean": 0.6894736842105262,
+      "std": 0.017300949932733345,
+      "max": 0.7149122807017544
+    },
+    "best_test_accuracy": {
+      "mean": 0.6894736842105262,
+      "std": 0.018089114585352003,
+      "max": 0.7258771929824561
+    },
+    "final_val_accuracy": {
+      "mean": 0.707032967032967,
+      "std": 0.02224128045353994,
+      "max": 0.7428571428571429
+    },
+    "best_val_accuracy": {
+      "mean": 0.7232967032967033,
+      "std": 0.021521635051005936,
+      "max": 0.7582417582417582
+    },
+    "experiment_count": 10
+  },
+  "best_combination_by_test": {
+    "parameters": {
+      "DROPOUT": 0.5,
+      "HIDDEN_CHANNELS": 64,
+      "MAX_HOPS": 4,
+      "NUM_LAYERS": 2,
+      "TEMPERATURE": 0.5
+    },
+    "final_test_accuracy": {
+      "mean": 0.7076754385964913,
+      "std": 0.019640358712769618,
+      "max": 0.7368421052631579
+    },
+    "best_test_accuracy": {
+      "mean": 0.7089912280701753,
+      "std": 0.012864043312335496,
+      "max": 0.7258771929824561
+    },
+    "final_val_accuracy": {
+      "mean": 0.694945054945055,
+      "std": 0.02203947452610403,
+      "max": 0.7296703296703296
+    },
+    "best_val_accuracy": {
+      "mean": 0.7147252747252747,
+      "std": 0.02030559905485908,
+      "max": 0.7450549450549451
+    },
+    "experiment_count": 10
+  },
+  "top_10_combinations": [
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 4,
+        "NUM_LAYERS": 2,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.7076754385964913,
+        "std": 0.019640358712769618,
+        "max": 0.7368421052631579
+      },
+      "best_test_accuracy": {
+        "mean": 0.7089912280701753,
+        "std": 0.012864043312335496,
+        "max": 0.7258771929824561
+      },
+      "final_val_accuracy": {
+        "mean": 0.694945054945055,
+        "std": 0.02203947452610403,
+        "max": 0.7296703296703296
+      },
+      "best_val_accuracy": {
+        "mean": 0.7147252747252747,
+        "std": 0.02030559905485908,
+        "max": 0.7450549450549451
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 2,
+        "NUM_LAYERS": 2,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.6971491228070177,
+        "std": 0.012266987956971028,
+        "max": 0.7171052631578947
+      },
+      "best_test_accuracy": {
+        "mean": 0.706359649122807,
+        "std": 0.011201397183440463,
+        "max": 0.7258771929824561
+      },
+      "final_val_accuracy": {
+        "mean": 0.6962637362637363,
+        "std": 0.021929617025523367,
+        "max": 0.734065934065934
+      },
+      "best_val_accuracy": {
+        "mean": 0.7186813186813188,
+        "std": 0.01968229729867087,
+        "max": 0.756043956043956
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 3,
+        "NUM_LAYERS": 2,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.6894736842105262,
+        "std": 0.017300949932733345,
+        "max": 0.7149122807017544
+      },
+      "best_test_accuracy": {
+        "mean": 0.6894736842105262,
+        "std": 0.018089114585352003,
+        "max": 0.7258771929824561
+      },
+      "final_val_accuracy": {
+        "mean": 0.707032967032967,
+        "std": 0.02224128045353994,
+        "max": 0.7428571428571429
+      },
+      "best_val_accuracy": {
+        "mean": 0.7232967032967033,
+        "std": 0.021521635051005936,
+        "max": 0.7582417582417582
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 3,
+        "NUM_LAYERS": 1,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.33837719298245605,
+        "std": 0.016558106737730404,
+        "max": 0.36622807017543857
+      },
+      "best_test_accuracy": {
+        "mean": 0.3447368421052632,
+        "std": 0.012513458436567643,
+        "max": 0.35964912280701755
+      },
+      "final_val_accuracy": {
+        "mean": 0.33230769230769236,
+        "std": 0.01729992848716873,
+        "max": 0.35384615384615387
+      },
+      "best_val_accuracy": {
+        "mean": 0.3608791208791209,
+        "std": 0.020114393298720962,
+        "max": 0.389010989010989
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 4,
+        "NUM_LAYERS": 1,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.32653508771929823,
+        "std": 0.029510895734741593,
+        "max": 0.36403508771929827
+      },
+      "best_test_accuracy": {
+        "mean": 0.34232456140350875,
+        "std": 0.029412955659084365,
+        "max": 0.3815789473684211
+      },
+      "final_val_accuracy": {
+        "mean": 0.36131868131868133,
+        "std": 0.013157476524919349,
+        "max": 0.378021978021978
+      },
+      "best_val_accuracy": {
+        "mean": 0.3879120879120879,
+        "std": 0.014553699455950158,
+        "max": 0.41098901098901097
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 2,
+        "NUM_LAYERS": 1,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.31666666666666665,
+        "std": 0.012178459102556865,
+        "max": 0.3399122807017544
+      },
+      "best_test_accuracy": {
+        "mean": 0.33377192982456144,
+        "std": 0.014671691827787492,
+        "max": 0.3618421052631579
+      },
+      "final_val_accuracy": {
+        "mean": 0.3373626373626374,
+        "std": 0.01304872756817353,
+        "max": 0.35824175824175825
+      },
+      "best_val_accuracy": {
+        "mean": 0.36747252747252745,
+        "std": 0.01641156457370942,
+        "max": 0.3934065934065934
+      },
+      "experiment_count": 10
+    }
+  ],
+  "all_combinations": [
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 4,
+        "NUM_LAYERS": 2,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.7076754385964913,
+        "std": 0.019640358712769618,
+        "max": 0.7368421052631579
+      },
+      "best_test_accuracy": {
+        "mean": 0.7089912280701753,
+        "std": 0.012864043312335496,
+        "max": 0.7258771929824561
+      },
+      "final_val_accuracy": {
+        "mean": 0.694945054945055,
+        "std": 0.02203947452610403,
+        "max": 0.7296703296703296
+      },
+      "best_val_accuracy": {
+        "mean": 0.7147252747252747,
+        "std": 0.02030559905485908,
+        "max": 0.7450549450549451
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 2,
+        "NUM_LAYERS": 2,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.6971491228070177,
+        "std": 0.012266987956971028,
+        "max": 0.7171052631578947
+      },
+      "best_test_accuracy": {
+        "mean": 0.706359649122807,
+        "std": 0.011201397183440463,
+        "max": 0.7258771929824561
+      },
+      "final_val_accuracy": {
+        "mean": 0.6962637362637363,
+        "std": 0.021929617025523367,
+        "max": 0.734065934065934
+      },
+      "best_val_accuracy": {
+        "mean": 0.7186813186813188,
+        "std": 0.01968229729867087,
+        "max": 0.756043956043956
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 3,
+        "NUM_LAYERS": 2,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.6894736842105262,
+        "std": 0.017300949932733345,
+        "max": 0.7149122807017544
+      },
+      "best_test_accuracy": {
+        "mean": 0.6894736842105262,
+        "std": 0.018089114585352003,
+        "max": 0.7258771929824561
+      },
+      "final_val_accuracy": {
+        "mean": 0.707032967032967,
+        "std": 0.02224128045353994,
+        "max": 0.7428571428571429
+      },
+      "best_val_accuracy": {
+        "mean": 0.7232967032967033,
+        "std": 0.021521635051005936,
+        "max": 0.7582417582417582
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 3,
+        "NUM_LAYERS": 1,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.33837719298245605,
+        "std": 0.016558106737730404,
+        "max": 0.36622807017543857
+      },
+      "best_test_accuracy": {
+        "mean": 0.3447368421052632,
+        "std": 0.012513458436567643,
+        "max": 0.35964912280701755
+      },
+      "final_val_accuracy": {
+        "mean": 0.33230769230769236,
+        "std": 0.01729992848716873,
+        "max": 0.35384615384615387
+      },
+      "best_val_accuracy": {
+        "mean": 0.3608791208791209,
+        "std": 0.020114393298720962,
+        "max": 0.389010989010989
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 4,
+        "NUM_LAYERS": 1,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.32653508771929823,
+        "std": 0.029510895734741593,
+        "max": 0.36403508771929827
+      },
+      "best_test_accuracy": {
+        "mean": 0.34232456140350875,
+        "std": 0.029412955659084365,
+        "max": 0.3815789473684211
+      },
+      "final_val_accuracy": {
+        "mean": 0.36131868131868133,
+        "std": 0.013157476524919349,
+        "max": 0.378021978021978
+      },
+      "best_val_accuracy": {
+        "mean": 0.3879120879120879,
+        "std": 0.014553699455950158,
+        "max": 0.41098901098901097
+      },
+      "experiment_count": 10
+    },
+    {
+      "parameters": {
+        "DROPOUT": 0.5,
+        "HIDDEN_CHANNELS": 64,
+        "MAX_HOPS": 2,
+        "NUM_LAYERS": 1,
+        "TEMPERATURE": 0.5
+      },
+      "final_test_accuracy": {
+        "mean": 0.31666666666666665,
+        "std": 0.012178459102556865,
+        "max": 0.3399122807017544
+      },
+      "best_test_accuracy": {
+        "mean": 0.33377192982456144,
+        "std": 0.014671691827787492,
+        "max": 0.3618421052631579
+      },
+      "final_val_accuracy": {
+        "mean": 0.3373626373626374,
+        "std": 0.01304872756817353,
+        "max": 0.35824175824175825
+      },
+      "best_val_accuracy": {
+        "mean": 0.36747252747252745,
+        "std": 0.01641156457370942,
+        "max": 0.3934065934065934
+      },
+      "experiment_count": 10
+    }
+  ]
+}

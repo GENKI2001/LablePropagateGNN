@@ -1,53 +1,47 @@
 import torch
 import numpy as np
 
+
 def add_feature_missingness(features, missing_percentage, device=None):
     """
-    特徴量に欠損を追加する関数（指定割合の特徴量を0にマスキング）
+    各ノードに対して同じ割合の特徴量をランダムに欠損させる関数
 
     Args:
         features (torch.Tensor): 入力特徴量テンソル (num_nodes, num_features)
-        missing_percentage (float): 欠損させる割合 (0.0 - 1.0)
+        missing_percentage (float): ノードごとの欠損割合 (0.0 - 1.0)
         device (torch.device, optional): 使用するデバイス
 
     Returns:
         torch.Tensor: 欠損が追加された特徴量テンソル
-        dict: 欠損情報（欠損数、割合など）
+        dict: 欠損情報（ノードごとの欠損数など）
     """
     if device is None:
         device = features.device
 
     features = features.to(device)
     num_nodes, num_features = features.shape
-    total_entries = num_nodes * num_features
-    num_missing = int(missing_percentage * total_entries)
-
-    # 欠損情報を保持
-    missing_info = {
-        'missing_percentage': missing_percentage,
-        'num_features': num_features,
-        'num_nodes': num_nodes,
-        'total_entries': total_entries,
-        'num_missing_entries': num_missing,
-        'missing_indices': []
-    }
-
-    if num_missing == 0:
-        return features, missing_info
+    num_missing_per_node = int(missing_percentage * num_features)
 
     # 欠損を加える特徴量テンソルをクローン
     missing_features = features.clone()
+    missing_indices = []
 
-    # ランダムに欠損位置を選択（フラットなインデックス）
-    flat_indices = torch.randperm(total_entries, device=device)[:num_missing]
-    row_indices = flat_indices // num_features
-    col_indices = flat_indices % num_features
+    for i in range(num_nodes):
+        if num_missing_per_node == 0:
+            continue
+        col_indices = torch.randperm(num_features, device=device)[:num_missing_per_node]
+        missing_features[i, col_indices] = 0.0
+        if i < 10:
+            missing_indices.append((i, col_indices.tolist()))
 
-    # 欠損値を0に置換（あるいは torch.nan にしたい場合は torch.float に変換必須）
-    missing_features[row_indices, col_indices] = 0.0
-
-    # 欠損インデックスの記録（最初の数個）
-    missing_info['missing_indices'] = list(zip(row_indices.tolist()[:10], col_indices.tolist()[:10]))
+    missing_info = {
+        'missing_percentage': missing_percentage,
+        'num_nodes': num_nodes,
+        'num_features': num_features,
+        'num_missing_per_node': num_missing_per_node,
+        'total_missing_entries': num_nodes * num_missing_per_node,
+        'example_missing_indices': missing_indices
+    }
 
     return missing_features, missing_info
 
@@ -364,5 +358,5 @@ def print_modification_info(modification_info, dataset_name="", run_num=None):
         elif mod_type == 'missingness':
             info = mod['info']
             print(f"  改変 {i+1}: 欠損 - 割合: {percentage:.1%}")
-            print(f"    欠損要素数: {info['num_missing_entries']}")
-            print(f"    総要素数: {info['total_entries']}") 
+            print(f"    欠損要素数: {info['total_missing_entries']}")
+            print(f"    総要素数: {info['num_nodes'] * info['num_features']}") 

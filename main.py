@@ -57,9 +57,9 @@ def main(dataset_name='Cornell', model_name='RobustH2GCN', calc_neighbor_label_f
     if grid_search_params is None:
         GRID_SEARCH_PARAMS = {
             'HIDDEN_CHANNELS': [64],  # 隠れ層次元
-            'NUM_LAYERS': [1] if MODEL_NAME == 'RobustH2GCN' else [1, 2, 3],                   # レイヤー数
+            'NUM_LAYERS': [1] if MODEL_NAME == 'RobustH2GCN' else [1, 2],                   # レイヤー数
             'MAX_HOPS': [2, 3, 4],     # 最大hop数
-            'TEMPERATURE': [0.5, 1.0, 2.0] if MODEL_NAME == 'RobustH2GCN' else [0.5],          # 温度パラメータ
+            'TEMPERATURE': [0.5, 2.0] if MODEL_NAME == 'RobustH2GCN' else [0.5],          # 温度パラメータ
             'DROPOUT': [0.5]          # ドロップアウト率
         }
     else:

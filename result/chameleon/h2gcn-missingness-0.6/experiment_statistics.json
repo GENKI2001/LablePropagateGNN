@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 21:05:30",
+    "dataset": "Chameleon",
+    "model": "H2GCN"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.9642630551488532,
+      "std": 0.010035329339840884
+    },
+    "val": {
+      "mean": 0.49732600732600735,
+      "std": 0.03209115259533412
+    },
+    "test": {
+      "mean": 0.4921418128654971,
+      "std": 0.030796355055088032
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.5124908424908425,
+      "std": 0.03090366150793032
+    },
+    "test": {
+      "mean": 0.485233918128655,
+      "std": 0.030748363395632392
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 124.76666666666667,
+    "stopping_epoch_std": 58.784172094951614,
+    "stopping_epoch_range": [
+      55,
+      317
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "missingness"
+    ]
+  }
+}

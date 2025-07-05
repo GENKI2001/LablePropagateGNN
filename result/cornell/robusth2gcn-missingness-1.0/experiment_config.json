@@ -1,0 +1,67 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 12:26:36",
+    "dataset": "Cornell",
+    "model": "RobustH2GCN"
+  },
+  "dataset_name": "Cornell",
+  "model_name": "RobustH2GCN",
+  "num_runs": 10,
+  "num_epochs": 600,
+  "calc_neighbor_label_features": true,
+  "combine_neighbor_label_features": false,
+  "disable_original_features": false,
+  "use_feature_modification": true,
+  "feature_modifications": [
+    {
+      "type": "missingness",
+      "percentage": 1.0,
+      "method": "per_node"
+    }
+  ],
+  "use_edge_modification": false,
+  "edge_modifications": [],
+  "use_similarity_based_edges": false,
+  "similarity_edge_mode": "add",
+  "similarity_feature_type": "raw",
+  "similarity_raw_threshold": 0.165,
+  "similarity_label_threshold": 0.9999997,
+  "mixhop_powers": [
+    0,
+    1,
+    2
+  ],
+  "graphsage_aggr": "mean",
+  "gat_num_heads": 8,
+  "gat_concat": true,
+  "use_pca": false,
+  "pca_components": 128,
+  "train_ratio": 0.6,
+  "val_ratio": 0.2,
+  "test_ratio": 0.2,
+  "learning_rate": 0.01,
+  "weight_decay": 0.0005,
+  "use_early_stopping": true,
+  "early_stopping_patience": 50,
+  "early_stopping_min_delta": 0.001,
+  "grid_search_parameters": {
+    "HIDDEN_CHANNELS": [
+      64
+    ],
+    "NUM_LAYERS": [
+      1
+    ],
+    "MAX_HOPS": [
+      2,
+      3,
+      4
+    ],
+    "TEMPERATURE": [
+      0.5,
+      2.0
+    ],
+    "DROPOUT": [
+      0.5
+    ]
+  }
+}
