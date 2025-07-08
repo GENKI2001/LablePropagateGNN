@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 02:01:33",
+    "dataset": "Wisconsin",
+    "model": "GAT"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.8667777777777778,
+      "std": 0.11289124013299452
+    },
+    "val": {
+      "mean": 0.42066666666666663,
+      "std": 0.06937498748748636
+    },
+    "test": {
+      "mean": 0.41699346405228754,
+      "std": 0.07344148700960909
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.5443333333333334,
+      "std": 0.05586789974772832
+    },
+    "test": {
+      "mean": 0.47516339869281043,
+      "std": 0.07664356727607068
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 61.15,
+    "stopping_epoch_std": 12.24993197260023,
+    "stopping_epoch_range": [
+      50,
+      100
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

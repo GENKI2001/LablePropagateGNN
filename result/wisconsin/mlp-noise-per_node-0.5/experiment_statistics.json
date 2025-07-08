@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 01:57:39",
+    "dataset": "Wisconsin",
+    "model": "MLP"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.8841111111111111,
+      "std": 0.13529715809156642
+    },
+    "val": {
+      "mean": 0.44533333333333325,
+      "std": 0.06671997868371629
+    },
+    "test": {
+      "mean": 0.4441176470588235,
+      "std": 0.05283516376721904
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.4749999999999999,
+      "std": 0.05860887304837042
+    },
+    "test": {
+      "mean": 0.45751633986928103,
+      "std": 0.06499900596314677
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 62.483333333333334,
+    "stopping_epoch_std": 17.185741829267137,
+    "stopping_epoch_range": [
+      50,
+      115
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

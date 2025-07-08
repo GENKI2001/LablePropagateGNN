@@ -1,0 +1,57 @@
+=== GCN on Squirrel Dataset - Grid Search Results ===
+    Date: 2025-07-06 06:05:20
+
+    EXPERIMENT SETTINGS:
+    - Dataset: Squirrel
+    - Model: GCN
+    - Number of runs: 10
+    - Number of epochs: 600
+    - Grid search combinations: 6
+    - Total experiments: 60
+
+    GRID SEARCH PARAMETERS:
+    - HIDDEN_CHANNELS: [64]
+- NUM_LAYERS: [1, 2]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.1935 ± 0.0116 (max: 0.2171)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.1904 ± 0.0098 (max: 0.2037)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.1895 ± 0.0083 (max: 0.2056)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.1891 ± 0.0119 (max: 0.2037)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.1890 ± 0.0123 (max: 0.2085)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.1882 ± 0.0060 (max: 0.1979)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.1895 ± 0.0083
+- Best single run test accuracy: 0.2056
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 60/60 (100.0%)
+- Average stopping epoch: 51.3 ± 4.0
+- Stopping epoch range: [50, 69]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['missingness']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5, achieving a final test accuracy of 18.9% ± 1.2%.

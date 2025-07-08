@@ -1,0 +1,57 @@
+=== GraphSAGE on Cornell Dataset - Grid Search Results ===
+    Date: 2025-07-07 01:46:47
+
+    EXPERIMENT SETTINGS:
+    - Dataset: Cornell
+    - Model: GraphSAGE
+    - Number of runs: 10
+    - Number of epochs: 600
+    - Grid search combinations: 6
+    - Total experiments: 60
+
+    GRID SEARCH PARAMETERS:
+    - HIDDEN_CHANNELS: [64]
+- NUM_LAYERS: [1, 2]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.6105 ± 0.0796 (max: 0.7368)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5974 ± 0.0865 (max: 0.7632)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5947 ± 0.0614 (max: 0.7105)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5895 ± 0.0817 (max: 0.7105)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5895 ± 0.0625 (max: 0.6842)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.5658 ± 0.0728 (max: 0.6842)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=0.5
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.5947 ± 0.0614
+- Best single run test accuracy: 0.7105
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 60/60 (100.0%)
+- Average stopping epoch: 77.2 ± 16.9
+- Stopping epoch range: [55, 120]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['noise']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=0.5, achieving a final test accuracy of 56.6% ± 7.3%.

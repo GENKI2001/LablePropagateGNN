@@ -46,20 +46,13 @@ def run_multiple_experiments_parallel(max_workers=None):
     # MLP, GCN, GAT, GraphSAGE, H2GCN, RobustH2GCN, RGCN
     
     # 実験設定を動的に生成
-    dataset_name = 'Squirrel'
-    models = ['MLP', 'GCN', 'GAT', 'GraphSAGE', 'H2GCN', 'RGCN', 'RobustH2GCN']
-    percentages = [0.2, 0.4, 0.6, 0.8, 1.0]
+    dataset_name = 'Citeseer'
+    models = ["MLP"]
+    percentages = [1.0]
     
     experiments = []
     for model_name in models:
         for percentage in percentages:
-            experiments.append({
-                'dataset_name': dataset_name,
-                'model_name': model_name,
-                'calc_neighbor_label_features': model_name == 'RobustH2GCN' if True else False,
-                'use_feature_modification': False,
-                'feature_modifications': None,
-            })
             experiments.append({
                 'dataset_name': dataset_name,
                 'model_name': model_name,
@@ -69,6 +62,7 @@ def run_multiple_experiments_parallel(max_workers=None):
                     {'type': 'missingness', 'percentage': percentage, 'method': 'per_node'}
                 ],
             })
+    
     
     print("=== 並列実験実行開始 ===")
     print(f"実行予定実験数: {len(experiments)}")

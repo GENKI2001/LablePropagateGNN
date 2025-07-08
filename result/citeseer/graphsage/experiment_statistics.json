@@ -1,0 +1,42 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 23:19:00",
+    "dataset": "Citeseer",
+    "model": "GraphSAGE"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.9994154976619907,
+      "std": 0.0005023917487137887
+    },
+    "val": {
+      "mean": 0.7565914786967418,
+      "std": 0.014510737109048525
+    },
+    "test": {
+      "mean": 0.7554304304304303,
+      "std": 0.012939922362204839
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.7729323308270677,
+      "std": 0.014579488292981444
+    },
+    "test": {
+      "mean": 0.7608358358358359,
+      "std": 0.013078562671574694
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 70.55,
+    "stopping_epoch_std": 24.3320262206007,
+    "stopping_epoch_range": [
+      53,
+      163
+    ]
+  }
+}

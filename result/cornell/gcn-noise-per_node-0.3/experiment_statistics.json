@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 01:45:02",
+    "dataset": "Cornell",
+    "model": "GCN"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.8269113149847095,
+      "std": 0.18419942944690293
+    },
+    "val": {
+      "mean": 0.40972222222222227,
+      "std": 0.07254645879109174
+    },
+    "test": {
+      "mean": 0.39122807017543854,
+      "std": 0.07036159519352798
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.47407407407407404,
+      "std": 0.0582377229389496
+    },
+    "test": {
+      "mean": 0.40614035087719286,
+      "std": 0.0695199650914897
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 60.36666666666667,
+    "stopping_epoch_std": 13.494402131583632,
+    "stopping_epoch_range": [
+      50,
+      112
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

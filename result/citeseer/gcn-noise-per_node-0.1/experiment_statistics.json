@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 09:03:51",
+    "dataset": "Citeseer",
+    "model": "GCN"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.9651052104208417,
+      "std": 0.016916720486736696
+    },
+    "val": {
+      "mean": 0.6849874686716793,
+      "std": 0.02277668808764143
+    },
+    "test": {
+      "mean": 0.6872622622622623,
+      "std": 0.022435754897764577
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.7016791979949875,
+      "std": 0.021207969107297144
+    },
+    "test": {
+      "mean": 0.6943943943943945,
+      "std": 0.022105696890353427
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 116.35,
+    "stopping_epoch_std": 44.78311623815386,
+    "stopping_epoch_range": [
+      67,
+      263
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

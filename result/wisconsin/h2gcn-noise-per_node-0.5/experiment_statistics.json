@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 02:02:09",
+    "dataset": "Wisconsin",
+    "model": "H2GCN"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "val": {
+      "mean": 0.5336666666666666,
+      "std": 0.05322802102485327
+    },
+    "test": {
+      "mean": 0.5568627450980392,
+      "std": 0.0644578331290935
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.5913333333333335,
+      "std": 0.05103811212112854
+    },
+    "test": {
+      "mean": 0.5405228758169934,
+      "std": 0.07216526899977511
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 78.78333333333333,
+    "stopping_epoch_std": 14.211605195129163,
+    "stopping_epoch_range": [
+      50,
+      127
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

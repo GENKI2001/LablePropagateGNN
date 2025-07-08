@@ -1,0 +1,57 @@
+=== RGCN on Citeseer Dataset - Grid Search Results ===
+    Date: 2025-07-07 10:36:18
+
+    EXPERIMENT SETTINGS:
+    - Dataset: Citeseer
+    - Model: RGCN
+    - Number of runs: 10
+    - Number of epochs: 600
+    - Grid search combinations: 6
+    - Total experiments: 60
+
+    GRID SEARCH PARAMETERS:
+    - HIDDEN_CHANNELS: [64]
+- NUM_LAYERS: [1, 2]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.3958 ± 0.0932 (max: 0.5000)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.3581 ± 0.0792 (max: 0.5270)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=2, TEMPERATURE=0.5
+   Final Test Accuracy: 0.3565 ± 0.0774 (max: 0.4895)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.2006 ± 0.0191 (max: 0.2222)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.1998 ± 0.0193 (max: 0.2237)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.1946 ± 0.0148 (max: 0.2192)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.3958 ± 0.0932
+- Best single run test accuracy: 0.5000
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 60/60 (100.0%)
+- Average stopping epoch: 130.8 ± 57.3
+- Stopping epoch range: [50, 354]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['noise']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=2, TEMPERATURE=0.5, achieving a final test accuracy of 39.6% ± 9.3%.

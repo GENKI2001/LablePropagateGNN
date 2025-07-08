@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 02:52:46",
+    "dataset": "Cora",
+    "model": "GraphSAGE"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.4818760262725779,
+      "std": 0.2065284572632295
+    },
+    "val": {
+      "mean": 0.419747381392483,
+      "std": 0.14071521561653397
+    },
+    "test": {
+      "mean": 0.4291282995702885,
+      "std": 0.1464153998424804
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.5191928527418361,
+      "std": 0.18584420456658624
+    },
+    "test": {
+      "mean": 0.5138121546961326,
+      "std": 0.18308957201386597
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 175.95,
+    "stopping_epoch_std": 112.01628229860157,
+    "stopping_epoch_range": [
+      50,
+      501
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

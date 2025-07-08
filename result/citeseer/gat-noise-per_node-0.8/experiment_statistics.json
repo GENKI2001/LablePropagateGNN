@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 00:18:57",
+    "dataset": "Citeseer",
+    "model": "GAT"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.6019455577822309,
+      "std": 0.32769050261128013
+    },
+    "val": {
+      "mean": 0.44385964912280695,
+      "std": 0.1865492511688639
+    },
+    "test": {
+      "mean": 0.44967467467467465,
+      "std": 0.186597935774974
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.4875187969924812,
+      "std": 0.15937433022468123
+    },
+    "test": {
+      "mean": 0.4778028028028028,
+      "std": 0.16159348895884423
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 231.01666666666668,
+    "stopping_epoch_std": 111.39950503580445,
+    "stopping_epoch_range": [
+      63,
+      536
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

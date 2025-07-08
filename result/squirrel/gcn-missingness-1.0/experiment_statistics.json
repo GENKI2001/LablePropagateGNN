@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-06 06:05:20",
+    "dataset": "Squirrel",
+    "model": "GCN"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.2056997863247863,
+      "std": 0.0021148112298101296
+    },
+    "val": {
+      "mean": 0.1930929487179487,
+      "std": 0.010622703468404182
+    },
+    "test": {
+      "mean": 0.1899455651617035,
+      "std": 0.010381555472231298
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.20041666666666663,
+      "std": 0.009979278745155095
+    },
+    "test": {
+      "mean": 0.19052193403778414,
+      "std": 0.012575944211755034
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 51.28333333333333,
+    "stopping_epoch_std": 3.979496059664953,
+    "stopping_epoch_range": [
+      50,
+      69
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "missingness"
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+=== RobustH2GCN on Chameleon Dataset - Grid Search Results ===
+    Date: 2025-07-06 00:21:34
+
+    EXPERIMENT SETTINGS:
+    - Dataset: Chameleon
+    - Model: RobustH2GCN
+    - Number of runs: 10
+    - Number of epochs: 600
+    - Grid search combinations: 6
+    - Total experiments: 60
+
+    GRID SEARCH PARAMETERS:
+    - HIDDEN_CHANNELS: [64]
+- NUM_LAYERS: [1]
+- MAX_HOPS: [2, 3, 4]
+- TEMPERATURE: [0.5, 2.0]
+- DROPOUT: [0.5]
+
+TOP 10 PARAMETER COMBINATIONS (by final test accuracy):
+
+1. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=2.0
+   Final Test Accuracy: 0.6467 ± 0.0311 (max: 0.6908)
+
+2. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=2.0
+   Final Test Accuracy: 0.6311 ± 0.0195 (max: 0.6535)
+
+3. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.6292 ± 0.0301 (max: 0.6579)
+
+4. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.6270 ± 0.0241 (max: 0.6689)
+
+5. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=4, NUM_LAYERS=1, TEMPERATURE=0.5
+   Final Test Accuracy: 0.6261 ± 0.0272 (max: 0.6711)
+
+6. DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=2, NUM_LAYERS=1, TEMPERATURE=2.0
+   Final Test Accuracy: 0.6197 ± 0.0205 (max: 0.6469)
+
+RECOMMENDED PARAMETERS:
+Based on validation accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=2.0
+Based on final test accuracy: DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=2.0
+
+BEST PERFORMANCE:
+- Maximum final test accuracy: 0.6311 ± 0.0195
+- Best single run test accuracy: 0.6535
+
+ROBUST H2GCN GATE STATISTICS:
+- Gate mean: 0.2573 ± 0.0440
+- Gate standard deviation: 0.3258 ± 0.0163
+- Gate minimum: 0.0001 ± 0.0005
+- Gate maximum: 0.9948 ± 0.0089
+- Gate range: [0.0000, 1.0000]
+
+EARLY STOPPING STATISTICS:
+- Early stopped experiments: 60/60 (100.0%)
+- Average stopping epoch: 179.1 ± 57.7
+- Stopping epoch range: [77, 405]
+
+FEATURE MODIFICATION STATISTICS:
+- Modifications applied: 1
+- Modification types: ['missingness']
+
+CONCLUSION:
+The best performing configuration uses DROPOUT=0.5, HIDDEN_CHANNELS=64, MAX_HOPS=3, NUM_LAYERS=1, TEMPERATURE=2.0, achieving a final test accuracy of 64.7% ± 3.1%.
+The RobustH2GCN model shows good performance with gate values indicating effective feature selection between node features and label features.

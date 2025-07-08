@@ -1,0 +1,60 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 01:56:12",
+    "dataset": "Texas",
+    "model": "RobustH2GCN"
+  },
+  "gate_statistics": {
+    "gate_mean": {
+      "mean": 0.13871307661786644,
+      "std": 0.23118046832263803
+    },
+    "gate_std": {
+      "mean": 0.09449107993343746,
+      "std": 0.14738114239567526
+    },
+    "gate_min": {
+      "mean": 0.016975802302174284,
+      "std": 0.11713159219648821
+    },
+    "gate_max": {
+      "mean": 0.3168297941851031,
+      "std": 0.44066333108190076
+    },
+    "gate_range": [
+      0.0,
+      1.0
+    ],
+    "experiment_count": 60
+  },
+  "best_parameter_gate_stats": {
+    "gate_mean": {
+      "mean": 0.11017993020183563,
+      "std": 0.17329620194988307
+    },
+    "gate_std": {
+      "mean": 0.11409797263131508,
+      "std": 0.17487745641219293
+    },
+    "gate_min": {
+      "mean": 1.6904055617614558e-06,
+      "std": 5.070121835137627e-06
+    },
+    "gate_max": {
+      "mean": 0.2967830718284558,
+      "std": 0.45339610050776197
+    },
+    "gate_range": [
+      0.0,
+      0.9986189603805542
+    ],
+    "experiment_count": 10,
+    "best_parameters": {
+      "DROPOUT": 0.5,
+      "HIDDEN_CHANNELS": 64,
+      "MAX_HOPS": 4,
+      "NUM_LAYERS": 1,
+      "TEMPERATURE": 2.0
+    }
+  }
+}

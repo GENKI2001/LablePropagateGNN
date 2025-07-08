@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-06 21:40:31",
+    "dataset": "Citeseer",
+    "model": "MLP"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.23373413493653974,
+      "std": 0.0686562555528336
+    },
+    "val": {
+      "mean": 0.2056641604010025,
+      "std": 0.013975976488048335
+    },
+    "test": {
+      "mean": 0.20508008008008008,
+      "std": 0.013773201787306401
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.21661654135338346,
+      "std": 0.01063469094064061
+    },
+    "test": {
+      "mean": 0.204004004004004,
+      "std": 0.01767581841609607
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 65.26666666666667,
+    "stopping_epoch_std": 29.71411935240365,
+    "stopping_epoch_range": [
+      50,
+      213
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

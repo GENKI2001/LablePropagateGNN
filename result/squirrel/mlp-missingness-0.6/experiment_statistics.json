@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-06 02:07:21",
+    "dataset": "Squirrel",
+    "model": "MLP"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.8992094017094018,
+      "std": 0.008503857417987601
+    },
+    "val": {
+      "mean": 0.28963141025641026,
+      "std": 0.012350051888165013
+    },
+    "test": {
+      "mean": 0.29108229266730706,
+      "std": 0.010963208492643069
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.3112339743589743,
+      "std": 0.013396697854165113
+    },
+    "test": {
+      "mean": 0.2997918667947486,
+      "std": 0.013134209488519738
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 68.18333333333334,
+    "stopping_epoch_std": 22.677074816259314,
+    "stopping_epoch_range": [
+      50,
+      221
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "missingness"
+    ]
+  }
+}

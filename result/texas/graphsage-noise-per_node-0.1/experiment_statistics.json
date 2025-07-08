@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 01:54:33",
+    "dataset": "Texas",
+    "model": "GraphSAGE"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "val": {
+      "mean": 0.7314814814814815,
+      "std": 0.07465053470646807
+    },
+    "test": {
+      "mean": 0.7263157894736841,
+      "std": 0.06660893160199868
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.7837962962962963,
+      "std": 0.06691536687287263
+    },
+    "test": {
+      "mean": 0.7083333333333334,
+      "std": 0.07243484458295502
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 74.91666666666667,
+    "stopping_epoch_std": 22.036554227515296,
+    "stopping_epoch_range": [
+      51,
+      134
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

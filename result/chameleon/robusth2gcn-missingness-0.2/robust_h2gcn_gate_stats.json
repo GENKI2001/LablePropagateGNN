@@ -1,0 +1,60 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 23:56:13",
+    "dataset": "Chameleon",
+    "model": "RobustH2GCN"
+  },
+  "gate_statistics": {
+    "gate_mean": {
+      "mean": 0.7977555463711421,
+      "std": 0.023807408549895166
+    },
+    "gate_std": {
+      "mean": 0.3145185825725397,
+      "std": 0.03494146988912164
+    },
+    "gate_min": {
+      "mean": 0.03581764196721148,
+      "std": 0.05449051260550523
+    },
+    "gate_max": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "gate_range": [
+      4.418274693307467e-05,
+      1.0
+    ],
+    "experiment_count": 60
+  },
+  "best_parameter_gate_stats": {
+    "gate_mean": {
+      "mean": 0.7874280273914337,
+      "std": 0.025609211322376816
+    },
+    "gate_std": {
+      "mean": 0.32489091753959654,
+      "std": 0.036684453034257006
+    },
+    "gate_min": {
+      "mean": 0.03221786718931981,
+      "std": 0.05509644361132242
+    },
+    "gate_max": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "gate_range": [
+      0.0006268964498303831,
+      1.0
+    ],
+    "experiment_count": 10,
+    "best_parameters": {
+      "DROPOUT": 0.5,
+      "HIDDEN_CHANNELS": 64,
+      "MAX_HOPS": 3,
+      "NUM_LAYERS": 1,
+      "TEMPERATURE": 0.5
+    }
+  }
+}

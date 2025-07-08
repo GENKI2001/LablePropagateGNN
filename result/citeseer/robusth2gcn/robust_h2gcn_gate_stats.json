@@ -1,0 +1,60 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 23:12:06",
+    "dataset": "Citeseer",
+    "model": "RobustH2GCN"
+  },
+  "gate_statistics": {
+    "gate_mean": {
+      "mean": 0.9929137925306956,
+      "std": 0.009912983574826232
+    },
+    "gate_std": {
+      "mean": 0.011340327331951509,
+      "std": 0.02171426732257713
+    },
+    "gate_min": {
+      "mean": 0.8978193332751592,
+      "std": 0.13089009683637354
+    },
+    "gate_max": {
+      "mean": 0.9999995569388072,
+      "std": 1.105521111315133e-06
+    },
+    "gate_range": [
+      0.5095598697662354,
+      1.0
+    ],
+    "experiment_count": 60
+  },
+  "best_parameter_gate_stats": {
+    "gate_mean": {
+      "mean": 0.9974436044692994,
+      "std": 0.0003982251049649583
+    },
+    "gate_std": {
+      "mean": 0.003411788120865822,
+      "std": 0.0006790256482097325
+    },
+    "gate_min": {
+      "mean": 0.9422812342643738,
+      "std": 0.024973621329165755
+    },
+    "gate_max": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "gate_range": [
+      0.8817199468612671,
+      1.0
+    ],
+    "experiment_count": 10,
+    "best_parameters": {
+      "DROPOUT": 0.5,
+      "HIDDEN_CHANNELS": 64,
+      "MAX_HOPS": 3,
+      "NUM_LAYERS": 1,
+      "TEMPERATURE": 2.0
+    }
+  }
+}

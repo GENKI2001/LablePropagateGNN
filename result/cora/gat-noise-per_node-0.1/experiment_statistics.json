@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-07 03:02:06",
+    "dataset": "Cora",
+    "model": "GAT"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.9849240558292284,
+      "std": 0.00940358616458163
+    },
+    "val": {
+      "mean": 0.8404189772027109,
+      "std": 0.022564631865963376
+    },
+    "test": {
+      "mean": 0.8377839165131983,
+      "std": 0.02226836321660605
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.8529266789895257,
+      "std": 0.0245276747970262
+    },
+    "test": {
+      "mean": 0.8364027010435849,
+      "std": 0.024153018140817013
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 153.36666666666667,
+    "stopping_epoch_std": 51.84527193700717,
+    "stopping_epoch_range": [
+      80,
+      304
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "noise"
+    ]
+  }
+}

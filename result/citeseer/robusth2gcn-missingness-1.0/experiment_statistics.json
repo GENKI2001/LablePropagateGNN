@@ -1,0 +1,48 @@
+{
+  "experiment_info": {
+    "timestamp": "2025-07-05 23:23:33",
+    "dataset": "Citeseer",
+    "model": "RobustH2GCN"
+  },
+  "total_experiments": 60,
+  "final_results": {
+    "train": {
+      "mean": 0.9065631262525051,
+      "std": 0.014062457817486777
+    },
+    "val": {
+      "mean": 0.6383959899749374,
+      "std": 0.035635678343059946
+    },
+    "test": {
+      "mean": 0.639039039039039,
+      "std": 0.03634874332148171
+    }
+  },
+  "best_results": {
+    "val": {
+      "mean": 0.701704260651629,
+      "std": 0.016330316267660752
+    },
+    "test": {
+      "mean": 0.6934934934934934,
+      "std": 0.018820682292249917
+    }
+  },
+  "early_stopping": {
+    "early_stopped_experiments": 60,
+    "early_stopping_rate": 1.0,
+    "average_stopping_epoch": 80.61666666666666,
+    "stopping_epoch_std": 19.767053115952535,
+    "stopping_epoch_range": [
+      57,
+      167
+    ]
+  },
+  "feature_modification": {
+    "modifications_applied": 1,
+    "modification_types": [
+      "missingness"
+    ]
+  }
+}
